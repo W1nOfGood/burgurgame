@@ -1,4 +1,5 @@
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
+import { DirectionalLight } from "@babylonjs/core/Lights/directionalLight";
 import { Light } from "@babylonjs/core/Lights/light";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { PointLight } from "@babylonjs/core/Lights/pointLight";
@@ -39,6 +40,7 @@ import type { GraphicsPreset } from "../settings.js";
 import { MaterialLibrary } from "./materials.js";
 import { foodTexture } from "./foodTextures.js";
 import { buildProps } from "./props.js";
+import { loadBakedEnvironment, type BakedEnvironment } from "./environment.js";
 
 export type PickInfo =
   | { type: "surface"; kind: SurfaceKind }
@@ -177,60 +179,58 @@ export class RestaurantView {
     this.materials = new MaterialLibrary(scene, budget.maxLights);
     const m = this.materials;
 
-    // Lights: one warm fill, a few practical lights, one shadow-casting spot over the line.
-    const hemi = new HemisphericLight("fill", new Vector3(0, 1, 0), scene);
-    hemi.intensity = 0.45;
-    hemi.diffuse = new Color3(1, 0.88, 0.74);
-    hemi.groundColor = new Color3(0.2, 0.14, 0.1);
-    const warm = new Color3(1, 0.82, 0.62);
-    const kitchenLight = new PointLight("kitchen_light", new Vector3(-1.5, 2.9, 2.6), scene);
-    kitchenLight.diffuse = warm;
-    kitchenLight.intensity = 1.1;
-    kitchenLight.range = 9;
-    kitchenLight.falloffType = Light.FALLOFF_STANDARD;
-    const diningLight = new PointLight("dining_light", new Vector3(0, 2.9, -3.2), scene);
-    diningLight.diffuse = new Color3(1, 0.7, 0.45);
-    diningLight.intensity = 0.9;
-    diningLight.range = 9;
-    diningLight.falloffType = Light.FALLOFF_STANDARD;
-    const spot = new SpotLight("line_spot", new Vector3(0, 3.0, 3.4), new Vector3(0, -1, 0.35).normalize(), Math.PI / 2.1, 2, scene);
-    spot.diffuse = new Color3(1, 0.9, 0.78);
-    spot.intensity = 1.6;
-    spot.range = 8;
-    spot.falloffType = Light.FALLOFF_STANDARD;
-    if (budget.maxLights >= 5) {
-      const front = new PointLight("front_light", new Vector3(0, 2.5, 0.2), scene);
-      front.diffuse = warm;
-      front.intensity = 0.6;
-      front.range = 5;
-      front.falloffType = Light.FALLOFF_STANDARD;
-    }
+    // Key light. On baked (lightmapped) surfaces it only contributes shadows: Babylon's
+    // LIGHTMAP_SHADOWSONLY mode adds `lightmap * shadow` there, so moving food and players still
+    // shadow the baked counters. On dynamic objects it is an ordinary overhead light.
+    const key = new DirectionalLight("key", new Vector3(0.18, -1, 0.32).normalize(), scene);
+    key.position = new Vector3(-1.5, 6, -1);
+    key.diffuse = new Color3(1, 0.93, 0.84);
+    key.specular = new Color3(1, 0.93, 0.84);
+    key.intensity = 1.25;
+    key.lightmapMode = Light.LIGHTMAP_SHADOWSONLY;
+    key.shadowMinZ = 0.5;
+    key.shadowMaxZ = 12;
+    this.key = key;
+    // Warm heat-lamp light over the pass, for food sitting there (dynamic objects only).
+    const pass = new PointLight("pass_light", new Vector3(-0.4, 1.55, 0), scene);
+    pass.diffuse = new Color3(1, 0.55, 0.25);
+    pass.intensity = 0.9;
+    pass.range = 1.3;
+    pass.falloffType = Light.FALLOFF_STANDARD;
+    this.dynamicOnly.push(pass);
     if (budget.shadowMapSize > 0) {
-      const sg = new ShadowGenerator(budget.shadowMapSize, spot);
+      const sg = new ShadowGenerator(budget.shadowMapSize, key);
       sg.usePercentageCloserFiltering = true;
-      sg.filteringQuality = budget.shadowMapSize >= 2048 ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW;
-      sg.bias = 0.0008;
-      sg.normalBias = 0.01;
+      sg.filteringQuality = budget.shadowMapSize >= 2048 ? ShadowGenerator.QUALITY_HIGH : ShadowGenerator.QUALITY_MEDIUM;
+      sg.bias = 0.0015;
+      sg.normalBias = 0.012;
+      sg.setDarkness(0.35);
       this.shadows = sg;
     } else {
       this.shadows = null;
     }
 
-    // Shell, counters and equipment bodies from the shared layout, merged per material and
-    // pick role to keep scene submission low.
+    // Invisible pick/role proxies from the shared layout (collision lives on the server and in
+    // the prediction world; these only answer "what did the player aim at").
     const groups = new Map<string, { meshes: Mesh[]; pick: PickInfo | null }>();
     for (const box of BOXES) {
-      const mesh = MeshBuilder.CreateBox(box.id, { width: box.half[0] * 2, height: box.half[1] * 2, depth: box.half[2] * 2 }, scene);
-      mesh.position.set(box.center[0], box.center[1], box.center[2]);
-      boxMapUVs(mesh, m.tileFor(box.material));
-      mesh.material = m.forBox(box.material);
       const pick: PickInfo | null = box.surface ? { type: "surface", kind: box.surface } : box.id === "trash" ? { type: "trash" } : box.collide ? { type: "static" } : null;
-      const key = `${box.material}|${JSON.stringify(pick)}`;
-      const g = groups.get(key) ?? { meshes: [], pick };
+      if (!pick) continue;
+      const mesh = MeshBuilder.CreateBox(`proxy_${box.id}`, { width: box.half[0] * 2, height: box.half[1] * 2, depth: box.half[2] * 2 }, scene);
+      mesh.position.set(box.center[0], box.center[1], box.center[2]);
+      mesh.bakeCurrentTransformIntoVertices();
+      const k = JSON.stringify(pick);
+      const g = groups.get(k) ?? { meshes: [], pick };
       g.meshes.push(mesh);
-      groups.set(key, g);
+      groups.set(k, g);
     }
-    for (const [key, g] of groups) mergeGroup(`layout_${key}`, g.meshes, g.pick);
+    for (const [k, g] of groups) {
+      const merged = mergeGroup(`proxy_${k}`, g.meshes, g.pick);
+      if (merged) {
+        merged.isVisible = false;
+        merged.metadata = { ...(merged.metadata ?? {}), placeholder: false, proxy: true };
+      }
+    }
 
     this.buildGrill(m);
     this.drawer = this.buildDrawer(m);
@@ -239,11 +239,76 @@ export class RestaurantView {
     this.openSign = this.buildOpenSign(m);
     this.ticketTex = this.buildTicketRail(m);
     this.boardTex = this.buildMenuBoard(m);
+    this.preset = preset;
+  }
+
+  private readonly key: DirectionalLight;
+  private readonly dynamicOnly: Light[] = [];
+  private readonly preset: GraphicsPreset;
+  /** Set once the Blender-authored environment is in the scene. */
+  baked: BakedEnvironment | null = null;
+
+  /**
+   * Loads the baked environment (glTF + lightmaps + probes). Falls back to the procedural
+   * restaurant if anything is missing, so the game stays playable.
+   */
+  async load(): Promise<"baked" | "fallback"> {
+    try {
+      const env = await loadBakedEnvironment(this.scene, this.preset);
+      this.baked = env;
+      for (const l of this.dynamicOnly) l.excludedMeshes.push(...env.staticMeshes);
+      if (this.preset === "medium" || this.preset === "high") {
+        const glow = new GlowLayer("glow", this.scene, { mainTextureRatio: 0.25, blurKernelSize: 32 });
+        glow.intensity = 0.45;
+        for (const mesh of [...env.glowMeshes, ...this.glowMeshes]) glow.addIncludedOnlyMesh(mesh as Mesh);
+      }
+      this.scene.environmentIntensity = 1.0;
+      this.materials.restoreMetalness();
+      return "baked";
+    } catch (err) {
+      console.warn("Baked environment unavailable; using the procedural restaurant", err);
+      this.buildFallback();
+      await this.enableReflections(this.preset);
+      return "fallback";
+    }
+  }
+
+  /** The original procedural restaurant (boxes merged per material, practical lights, props). */
+  private buildFallback(): void {
+    const scene = this.scene;
+    const m = this.materials;
+    this.key.lightmapMode = Light.LIGHTMAP_DEFAULT;
+    const hemi = new HemisphericLight("fill", new Vector3(0, 1, 0), scene);
+    hemi.intensity = 0.45;
+    hemi.diffuse = new Color3(1, 0.88, 0.74);
+    hemi.groundColor = new Color3(0.2, 0.14, 0.1);
+    const warm = new Color3(1, 0.82, 0.62);
+    for (const [name, pos, color, intensity] of [
+      ["kitchen_light", new Vector3(-1.5, 2.9, 2.6), warm, 1.1],
+      ["dining_light", new Vector3(0, 2.9, -3.2), new Color3(1, 0.7, 0.45), 0.9],
+    ] as const) {
+      const l = new PointLight(name, pos, scene);
+      l.diffuse = color;
+      l.intensity = intensity;
+      l.range = 9;
+      l.falloffType = Light.FALLOFF_STANDARD;
+    }
+    const groups = new Map<string, { meshes: Mesh[]; pick: PickInfo | null }>();
+    for (const box of BOXES) {
+      const mesh = MeshBuilder.CreateBox(box.id, { width: box.half[0] * 2, height: box.half[1] * 2, depth: box.half[2] * 2 }, scene);
+      mesh.position.set(box.center[0], box.center[1], box.center[2]);
+      boxMapUVs(mesh, m.tileFor(box.material));
+      mesh.material = m.forBox(box.material);
+      const key = box.material;
+      const g = groups.get(key) ?? { meshes: [], pick: null };
+      g.meshes.push(mesh);
+      groups.set(key, g);
+    }
+    for (const [key, g] of groups) mergeGroup(`layout_${key}`, g.meshes, null);
     this.buildDecor(m);
     this.buildExterior(m);
     const props = buildProps(scene, m);
-    // A restrained glow on neon, lamps and panels only (spec §4: no excessive bloom).
-    if (preset === "medium" || preset === "high") {
+    if (this.preset === "medium" || this.preset === "high") {
       const glow = new GlowLayer("glow", scene, { mainTextureRatio: 0.25, blurKernelSize: 32 });
       glow.intensity = 0.55;
       for (const mesh of [...props.glowing, ...this.glowMeshes]) glow.addIncludedOnlyMesh(mesh);
@@ -284,7 +349,12 @@ export class RestaurantView {
   private buildGrill(m: MaterialLibrary): void {
     const knobMat = m.solid("knob", [0.08, 0.08, 0.08], 0.4, 0.2);
     const markMat = m.solid("knob_mark", [0.95, 0.95, 0.95], 0.5);
-    const plate = m.solid("grill_zone", [0.14, 0.13, 0.12], 0.45, 0.45);
+    // Heat shimmer overlay on each zone: additive and invisible when cold (the plate itself is
+    // part of the baked griddle).
+    const plate = m.solid("grill_zone", [0, 0, 0], 0.45, 0);
+    plate.alpha = 0.999;
+    plate.alphaMode = 1; // ALPHA_ADD
+    plate.disableLighting = true;
     GRILL_ZONES.forEach((zone, i) => {
       const w = zone.rect.maxX - zone.rect.minX - 0.02;
       const d = zone.rect.maxZ - zone.rect.minZ - 0.02;
@@ -293,7 +363,6 @@ export class RestaurantView {
       const glow = plate.clone(`zone_mat_${i}`) as PBRMaterial;
       top.material = glow;
       this.zoneGlow.push(glow);
-      top.receiveShadows = true;
       setPick(top, { type: "surface", kind: "grill" });
 
       const knob = MeshBuilder.CreateCylinder(`knob_${i}`, { diameter: 0.07, height: 0.04, tessellation: 20 }, this.scene);
@@ -308,18 +377,15 @@ export class RestaurantView {
       setPick(knob, { type: "knob", zone: i });
       this.knobs.push(knob);
 
-      const lamp = MeshBuilder.CreateSphere(`knob_lamp_${i}`, { diameter: 0.014, segments: 8 }, this.scene);
-      lamp.position.set(zone.knob[0] + 0.06, zone.knob[1] + 0.05, zone.knob[2]);
+      // Pilot lamp sits in the bezel modelled on the griddle's control panel.
+      const lamp = MeshBuilder.CreateSphere(`knob_lamp_${i}`, { diameter: 0.016, segments: 10 }, this.scene);
+      lamp.scaling.z = 0.5;
+      lamp.position.set(zone.knob[0] + 0.1, 0.81, 4.158);
       const lampMat = m.solid(`lamp_${i}`, [0.1, 0.1, 0.1], 0.3, 0, [0, 0, 0]);
       lamp.material = lampMat;
       lamp.isPickable = false;
       this.knobLamps.push(lampMat);
     });
-    // Grease trough along the front edge.
-    const trough = MeshBuilder.CreateBox("grease_tray", { width: 1.6, height: 0.03, depth: 0.05 }, this.scene);
-    trough.position.set(0, 0.88, 4.18);
-    trough.material = m.solid("grease", [0.2, 0.18, 0.15], 0.3, 0.9);
-    trough.isPickable = false;
   }
 
   private buildDrawer(m: MaterialLibrary): TransformNode {
@@ -436,6 +502,7 @@ export class RestaurantView {
     const opening = MeshBuilder.CreateCylinder("trash_opening", { diameter: 0.36, height: 0.01, tessellation: 24 }, this.scene);
     opening.position.set((TRASH_ZONE.minX + TRASH_ZONE.maxX) / 2, 0.805, (TRASH_ZONE.minZ + TRASH_ZONE.maxZ) / 2);
     opening.material = this.materials.solid("trash_hole", [0.02, 0.02, 0.02], 0.9);
+    opening.isVisible = false;
     setPick(opening, { type: "trash" });
   }
 
@@ -542,7 +609,7 @@ export class RestaurantView {
 
   private buildMenuBoard(m: MaterialLibrary): DynamicTexture {
     const board = MeshBuilder.CreatePlane("menu_board", { width: 2.6, height: 1.1 }, this.scene);
-    board.position.set(-3.2, 2.3, 0.36);
+    board.position.set(-3.2, 2.3, 0.418);
     board.rotation.y = Math.PI;
     const tex = m.signTexture("menu_tex", 1024, 434, (ctx, w, h) => ctx.clearRect(0, 0, w, h));
     const mat = new PBRMaterial("menu_mat", this.scene);
@@ -556,7 +623,7 @@ export class RestaurantView {
     // A second face toward the dining room.
     const back = board.clone("menu_board_front");
     back.rotation.y = 0;
-    back.position.z = 0.34;
+    back.position.z = 0.302;
     return tex;
   }
 
@@ -679,7 +746,7 @@ export class RestaurantView {
       const heat = Math.max(0, Math.min(1, (g.temp - 60) / 190));
       this.knobLamps[i]!.emissiveColor.set(g.knob > 0.02 ? 1 : 0.02, g.knob > 0.02 ? 0.45 : 0.02, 0.02);
       // Barely-there warmth on a hot plate; heat is read from sound, lamps and smoke, not glow.
-      this.zoneGlow[i]!.emissiveColor.set(heat * 0.035, heat * 0.008, 0);
+      this.zoneGlow[i]!.emissiveColor.set(heat * 0.05, heat * 0.012, 0.002 * heat);
     });
     this.drawer.position.z = CHILLER_DRAWER.handle[2] - state.drawer * CHILLER_DRAWER.travel;
     this.lever.rotation.x = state.shiftSwitch ? -0.5 : 0.5;

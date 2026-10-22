@@ -188,7 +188,7 @@ export class Game {
     this.restaurant = new RestaurantView(scene, settings.graphics);
     this.hands = new FirstPersonHands(scene, this.camera, this.restaurant.materials);
     this.setupPostProcessing(settings);
-    void this.restaurant.enableReflections(settings.graphics);
+    void this.restaurant.load();
 
     const me = session.state.players.get(session.sessionId);
     this.local = new LocalPlayer(R, { x: me?.x ?? 0, y: me?.y ?? 0, z: me?.z ?? 3 });

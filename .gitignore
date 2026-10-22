@@ -11,3 +11,4 @@ backups/
 *.log
 .DS_Store
 /test-results/
+assets/build/
