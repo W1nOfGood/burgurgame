@@ -162,15 +162,7 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     const kitchen = this.kitchen!;
     this.sessions.set(client.sessionId, { profileId: auth.profileId, name: opts.name, results: new Map(), tokens: NET.maxIntentsPerSecond, lastRefill: Date.now() });
     kitchen.addPlayer(client.sessionId, { name: opts.name, platform: opts.platform });
-    const welcome: WelcomeMessage = {
-      sessionId: client.sessionId,
-      protocol: PROTOCOL_VERSION,
-      restaurantId: this.restaurantId,
-      code: this.roomId,
-      isOwner: auth.profileId === this.ownerProfileId,
-      tickHz: NET.tickHz,
-    };
-    client.send(SERVER_MSG.welcome, welcome);
+    client.send(SERVER_MSG.welcome, this.welcomeFor(client.sessionId));
     this.afterPresenceChange();
     log.info("player joined", { room: this.roomId, session: client.sessionId, players: this.clients.length });
   }
@@ -350,15 +342,18 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     this.afterPresenceChange();
     const session = this.sessions.get(client.sessionId);
     if (session) session.results.clear();
-    const welcome: WelcomeMessage = {
-      sessionId: client.sessionId,
+    client.send(SERVER_MSG.welcome, this.welcomeFor(client.sessionId));
+  }
+
+  welcomeFor(sessionId: string): WelcomeMessage {
+    return {
+      sessionId,
       protocol: PROTOCOL_VERSION,
       restaurantId: this.restaurantId,
       code: this.roomId,
-      isOwner: session?.profileId === this.ownerProfileId,
+      isOwner: this.sessions.get(sessionId)?.profileId === this.ownerProfileId,
       tickHz: NET.tickHz,
     };
-    client.send(SERVER_MSG.welcome, welcome);
   }
 
   override onLeave(client: Client): void {
@@ -450,6 +445,8 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
   }
 
   private registerMessages(): void {
+    // Request/response handshake: a pushed welcome can race the client's handler registration.
+    this.onMessage(SERVER_MSG.welcome, (client: Client) => this.welcomeFor(client.sessionId));
     this.on(MSG.input, inputSchema, (client, msg) => this.kitchen?.pushInput(client.sessionId, msg));
     this.on(MSG.grab, grabSchema, (client, msg) =>
       this.command(client, msg.cmd, (k) => ("item" in msg ? k.grabItem(client.sessionId, msg.item, msg.rev) : k.grabFromDispenser(client.sessionId, msg.dispenser))),

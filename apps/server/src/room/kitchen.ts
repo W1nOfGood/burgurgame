@@ -573,7 +573,8 @@ export class Kitchen {
     let center: V3 = { x: d.center[0], y: d.center[1], z: d.center[2] };
     if (d.requiresDrawer !== undefined) {
       if (this.state.drawer < d.requiresDrawer) return fail("Open the chiller drawer first");
-      center = { x: center.x, y: center.y, z: CHILLER_DRAWER.handle[2] - this.state.drawer * CHILLER_DRAWER.travel + 0.05 };
+      // Patties sit in the part of the tub that slides out in front of the counter.
+      center = { x: center.x, y: center.y, z: CHILLER_DRAWER.handle[2] - this.state.drawer * CHILLER_DRAWER.travel + 0.15 };
     }
     const reach = this.canReach(p, center, 0.2);
     if (!reach.ok) return reach;

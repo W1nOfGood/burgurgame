@@ -100,12 +100,25 @@ export class Session extends Emitter<SessionEvents> {
 
   static async create(token: string, req: JoinRequest): Promise<Session> {
     const room = await Session.client(token).create<RestaurantState>("restaurant", { protocol: PROTOCOL_VERSION, ...req }, RestaurantState);
-    return new Session(room);
+    return new Session(room).handshake();
   }
 
   static async join(token: string, code: string, req: JoinRequest): Promise<Session> {
     const room = await Session.client(token).joinById<RestaurantState>(code.trim().toUpperCase(), { protocol: PROTOCOL_VERSION, ...req }, RestaurantState);
-    return new Session(room);
+    return new Session(room).handshake();
+  }
+
+  /** Asks for the welcome explicitly; a pushed welcome may arrive before handlers exist. */
+  private async handshake(): Promise<Session> {
+    if (!this.welcome) {
+      const w = (await this.room.request(SERVER_MSG.welcome, {}, { timeout: 8000 })) as WelcomeMessage;
+      if (!this.welcome) {
+        this.welcome = w;
+        this.rememberReconnect();
+        this.emit("welcome", w);
+      }
+    }
+    return this;
   }
 
   /** Resumes after a page reload within the server's reconnect grace period. */
@@ -119,7 +132,7 @@ export class Session extends Emitter<SessionEvents> {
         return null;
       }
       const room = await Session.client(token).reconnect<unknown>(saved.token, RestaurantState as never);
-      return new Session(room as unknown as Room<unknown, RestaurantState>);
+      return await new Session(room as unknown as Room<unknown, RestaurantState>).handshake();
     } catch {
       storageSet(RECONNECT_KEY, null);
       return null;

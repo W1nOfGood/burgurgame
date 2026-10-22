@@ -259,8 +259,10 @@ describe("shared interactions", () => {
     at(a, trayPos.x, 1.3, 0, 0.7);
     expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });
 
-    // There should be an open order by now.
+    // Random tickets may carry modifiers; add a plain one so the served burger has an exact match
+    // (the server pays against the best-scoring open ticket).
     await until(() => [...room.state.orders.values()].some((o) => o.status === "open"), 2000, "open order");
+    k.createOrder("classic_cheeseburger", []);
 
     // Serve at the pickup shelf.
     at(a, trayPos.x, 1.3, 0, 0.7);
@@ -271,7 +273,7 @@ describe("shared interactions", () => {
     expect(await sendWithCmd(a, placeCmd, "place", { point: { x: -0.4, y: 1.0, z: 0.1 } })).toMatchObject({ ok: true });
     const msg = await served;
     expect(msg.accepted).toBe(true);
-    expect(msg.score).toBeGreaterThanOrEqual(80);
+    expect(msg.score, msg.feedback.join("; ")).toBeGreaterThanOrEqual(80);
     await until(() => room.state.balance === startBalance + msg.priceCents + msg.tipCents, 2000, "balance");
 
     // A retried command and a duplicated commit cannot pay twice.
