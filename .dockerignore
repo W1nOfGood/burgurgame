@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.env
+deploy/.env
+backups
+test-results
+playwright-report
+coverage
