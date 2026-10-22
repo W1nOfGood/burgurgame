@@ -25,6 +25,18 @@ Colyseus 0.18 ships its own input/prediction API. Stage 1 uses plain room messag
 sequenced input batches instead, because the spec asks for ~30 messages/s carrying several
 60 Hz samples and we want full control of reconciliation. Revisit once the slice is measured.
 
+## Status (22 Oct 2026)
+
+| Stage | State |
+| --- | --- |
+| 1 — Multiplayer interaction slice | Playable: shared kitchen for desktop + touch, grab/hand-over, knobs, drawer, spatula flips, assembly, sauces, serving with one-time payment. Verified by room tests and Playwright desktop + iPad-emulated tests. **Physical iPad not yet tested.** |
+| 2 — Persistence and recovery | Foundations built and tested: guest identity, PostgreSQL schema + migrations, fenced leases, transactional sales/purchases, checkpoints, restore without double-serving, room lifecycle, pause rules. |
+| 3 — Visual benchmark | Procedural placeholder pass only (see `ASSET_MANIFEST.md`). |
+| 4 — Restaurant shift | 16 recipes in three unlock tiers, modifiers, scoring, ledger overlay. No customers, fries, drinks, cleaning or upgrades yet. |
+| 5 — Release hardening | Deployment stack, backups and smoke test exist; measurements, physical-device and load testing outstanding. |
+
+See `KNOWN_LIMITATIONS.md` for the full list.
+
 ## Workspace layout
 
 ```
