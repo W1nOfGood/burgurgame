@@ -1,12 +1,13 @@
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import type { Scene } from "@babylonjs/core/scene";
-import { ITEMS, type ItemKind } from "@ahb/data";
+import { ITEMS, isPatty, saucesInMask, type ItemKind, type SauceKind } from "@ahb/data";
 import { pattyDoneness, type FoodState } from "@ahb/simulation";
+import { bottleLabel, foodTexture } from "./foodTextures.js";
 import type { MaterialLibrary } from "./materials.js";
 import { setPick } from "./scene.js";
 
@@ -17,37 +18,54 @@ function mix(a: RGB, b: RGB, t: number): RGB {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
 }
 
-const RAW: RGB = [0.78, 0.33, 0.36];
-const GREYING: RGB = [0.6, 0.4, 0.36];
-const BROWN: RGB = [0.42, 0.22, 0.12];
-const DARK: RGB = [0.2, 0.11, 0.06];
+const RAW: RGB = [0.86, 0.42, 0.45];
+const GREYING: RGB = [0.66, 0.46, 0.42];
+const BROWN: RGB = [0.46, 0.25, 0.13];
+const DARK: RGB = [0.22, 0.12, 0.06];
 const CHAR: RGB = [0.05, 0.04, 0.035];
 
-/** Patty surface colour from its browning and burn values (authored ramp, not a texture bake). */
-export function pattySurface(cook: number, burn: number): RGB {
+/** Patty surface colour from browning and burn (authored ramp; texture adds the grain). */
+export function pattySurface(cook: number, burn: number, veggie = false): RGB {
+  const raw: RGB = veggie ? [0.62, 0.66, 0.4] : RAW;
+  const grey: RGB = veggie ? [0.55, 0.52, 0.32] : GREYING;
   let c: RGB;
-  if (cook < 0.25) c = mix(RAW, GREYING, cook / 0.25);
-  else if (cook < 0.8) c = mix(GREYING, BROWN, (cook - 0.25) / 0.55);
+  if (cook < 0.25) c = mix(raw, grey, cook / 0.25);
+  else if (cook < 0.8) c = mix(grey, BROWN, (cook - 0.25) / 0.55);
   else c = mix(BROWN, DARK, (cook - 0.8) / 0.5);
   return mix(c, CHAR, burn * 1.2);
 }
 
-export function pattyEdge(inner: number, burn: number): RGB {
-  return mix(mix(RAW, [0.5, 0.33, 0.28], inner / 0.9), CHAR, burn * 0.6);
+export function pattyEdge(inner: number, burn: number, veggie = false): RGB {
+  const raw: RGB = veggie ? [0.6, 0.64, 0.38] : RAW;
+  return mix(mix(raw, [0.52, 0.34, 0.28], inner / 0.9), CHAR, burn * 0.6);
 }
 
-const CRUMB: RGB = [0.93, 0.82, 0.6];
-const TOASTED: RGB = [0.72, 0.45, 0.2];
-const CRUST: RGB = [0.7, 0.42, 0.16];
+const CRUMB: RGB = [0.96, 0.86, 0.64];
+const TOASTED: RGB = [0.76, 0.48, 0.2];
+const CRUST: RGB = [0.78, 0.46, 0.16];
 
 export function toastColor(toast: number, burn: number): RGB {
   const c = toast < 1 ? mix(CRUMB, TOASTED, toast) : mix(TOASTED, DARK, (toast - 1) / 0.5);
   return mix(c, CHAR, burn);
 }
 
-function dirty(c: RGB, isDirty: boolean): RGB {
-  return isDirty ? mix(c, [0.25, 0.22, 0.2], 0.45) : c;
+/** Generic grill-topping tint: raw → cooked → crisp → burnt. */
+function cookTint(raw: RGB, cooked: RGB, crisp: RGB, cook: number, burn: number): RGB {
+  const c = cook < 0.6 ? mix(raw, cooked, cook / 0.6) : mix(cooked, crisp, (cook - 0.6) / 0.6);
+  return mix(c, CHAR, burn);
 }
+
+function dirty(c: RGB, isDirty: boolean): RGB {
+  return isDirty ? mix(c, [0.28, 0.25, 0.22], 0.5) : c;
+}
+
+export const SAUCE_COLORS: Record<SauceKind, RGB> = {
+  house: [0.95, 0.55, 0.18],
+  ketchup: [0.72, 0.06, 0.04],
+  mustard: [0.92, 0.72, 0.08],
+  mayo: [0.96, 0.93, 0.8],
+  bbq: [0.32, 0.12, 0.05],
+};
 
 /** Face classification for vertex colouring: 0 = bottom, 1 = side, 2 = top. */
 function classifyFaces(mesh: Mesh): Uint8Array {
@@ -55,7 +73,7 @@ function classifyFaces(mesh: Mesh): Uint8Array {
   const out = new Uint8Array(normals.length / 3);
   for (let i = 0; i < out.length; i++) {
     const ny = normals[i * 3 + 1]!;
-    out[i] = ny > 0.6 ? 2 : ny < -0.6 ? 0 : 1;
+    out[i] = ny > 0.55 ? 2 : ny < -0.55 ? 0 : 1;
   }
   return out;
 }
@@ -72,21 +90,56 @@ function paintFaces(mesh: Mesh, faces: Uint8Array, bottom: RGB, side: RGB, top: 
   mesh.setVerticesData(VertexBuffer.ColorKind, colors, true);
 }
 
-/** Irregular edge so patties don't look machine-stamped. */
-function roughenRadially(mesh: Mesh, amount: number, seed: number): void {
+function paintUniform(mesh: Mesh, c: RGB): void {
+  const n = mesh.getTotalVertices();
+  const colors = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) colors.set([c[0], c[1], c[2], 1], i * 4);
+  mesh.setVerticesData(VertexBuffer.ColorKind, colors, true);
+}
+
+function hash(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619);
+  return (h >>> 0) / 4294967295;
+}
+
+/** Irregular edge and gently domed top so food doesn't look machine-stamped. */
+function sculpt(mesh: Mesh, edge: number, dome: number, seed: number): void {
   const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
   if (!pos) return;
+  let maxR = 0;
+  for (let i = 0; i < pos.length; i += 3) maxR = Math.max(maxR, Math.hypot(pos[i]!, pos[i + 2]!));
   for (let i = 0; i < pos.length; i += 3) {
     const x = pos[i]!;
     const z = pos[i + 2]!;
-    const a = Math.atan2(z, x);
     const r = Math.hypot(x, z);
-    if (r < 1e-4) continue;
-    const k = 1 + amount * (Math.sin(a * 5 + seed) * 0.6 + Math.sin(a * 11 + seed * 2.3) * 0.4);
-    pos[i] = x * k;
-    pos[i + 2] = z * k;
+    if (r > 1e-4) {
+      const a = Math.atan2(z, x);
+      const k = 1 + edge * (Math.sin(a * 5 + seed * 40) * 0.6 + Math.sin(a * 11 + seed * 90) * 0.4);
+      pos[i] = x * k;
+      pos[i + 2] = z * k;
+    }
+    if (pos[i + 1]! > 0) pos[i + 1] = pos[i + 1]! + dome * (1 - (r / maxR) ** 2);
   }
   mesh.updateVerticesData(VertexBuffer.PositionKind, pos);
+  mesh.createNormals(true);
+}
+
+function lathe(name: string, profile: [number, number][], scene: Scene, tessellation = 32): Mesh {
+  return MeshBuilder.CreateLathe(name, { shape: profile.map(([r, y]) => new Vector3(r, y, 0)), tessellation, closed: true, updatable: true }, scene);
+}
+
+function texturedMaterial(lib: MaterialLibrary, scene: Scene, name: string, tex: string, roughness: number, opts: { twoSided?: boolean; alpha?: boolean; albedo?: RGB } = {}): PBRMaterial {
+  const existing = scene.getMaterialByName(name) as PBRMaterial | null;
+  if (existing) return existing;
+  const m = lib.solid(name, opts.albedo ?? [1, 1, 1], roughness);
+  m.albedoTexture = foodTexture(scene, tex);
+  if (opts.twoSided) m.backFaceCulling = false;
+  if (opts.alpha) {
+    m.useAlphaFromAlbedoTexture = true;
+    m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHATEST;
+  }
+  return m;
 }
 
 export interface ItemSnapshotLike {
@@ -107,7 +160,10 @@ export class ItemView {
   private readonly lib: MaterialLibrary;
   private faces: Uint8Array | null = null;
   private colorTarget: Mesh | null = null;
+  private uniformTargets: { mesh: Mesh; base: RGB; cooked: RGB; crisp: RGB }[] = [];
   private cheeseBase: Float32Array | null = null;
+  private marksTop: Mesh | null = null;
+  private marksBottom: Mesh | null = null;
   private sauceBlob: Mesh | null = null;
   private appearanceKey = "";
   food: FoodState | null = null;
@@ -126,160 +182,277 @@ export class ItemView {
   private build(): Mesh {
     const s = this.scene;
     const lib = this.lib;
-    const seed = parseInt(this.id.replace(/\D/g, ""), 10) || 1;
+    const seed = hash(this.id);
+    const n = `it_${this.id}`;
     switch (this.kind) {
-      case "patty": {
-        const m = MeshBuilder.CreateCylinder(`it_${this.id}`, { diameter: 0.11, height: 0.024, tessellation: 28, updatable: true }, s);
-        roughenRadially(m, 0.05, seed);
-        m.material = lib.vertexColored("patty_mat", 0.62);
+      case "patty":
+      case "veggie_patty": {
+        const veggie = this.kind === "veggie_patty";
+        const m = MeshBuilder.CreateCylinder(n, { diameter: 0.112, height: veggie ? 0.026 : 0.024, tessellation: 36, subdivisions: 2, updatable: true }, s);
+        sculpt(m, 0.045, 0.003, seed);
+        m.material = texturedMaterial(lib, s, veggie ? "veggie_mat" : "patty_mat", veggie ? "veggie" : "meat", 0.52);
         this.faces = classifyFaces(m);
         this.colorTarget = m;
+        const marksMat = texturedMaterial(lib, s, "grill_marks", "grill", 0.7, { alpha: true });
+        this.marksTop = MeshBuilder.CreateDisc(`${n}_mt`, { radius: 0.05, tessellation: 24 }, s);
+        this.marksTop.rotation.x = Math.PI / 2;
+        this.marksTop.position.y = 0.0135 + 0.002;
+        this.marksBottom = MeshBuilder.CreateDisc(`${n}_mb`, { radius: 0.05, tessellation: 24 }, s);
+        this.marksBottom.rotation.x = -Math.PI / 2;
+        this.marksBottom.position.y = -0.0125;
+        for (const mk of [this.marksTop, this.marksBottom]) {
+          mk.material = marksMat;
+          mk.parent = m;
+          mk.isVisible = false;
+        }
         return m;
       }
       case "bun_bottom": {
-        const m = MeshBuilder.CreateCylinder(`it_${this.id}`, { diameterTop: 0.116, diameterBottom: 0.12, height: 0.032, tessellation: 28, updatable: true }, s);
-        m.material = lib.vertexColored("bun_mat", 0.75);
+        const m = lathe(n, [
+          [0, -0.016],
+          [0.054, -0.016],
+          [0.059, -0.012],
+          [0.061, -0.002],
+          [0.06, 0.01],
+          [0.056, 0.016],
+          [0, 0.016],
+        ], s);
+        m.material = texturedMaterial(lib, s, "bun_mat", "crumb", 0.6);
         this.faces = classifyFaces(m);
         this.colorTarget = m;
         return m;
       }
       case "bun_top": {
-        const dome = MeshBuilder.CreateSphere(`it_${this.id}`, { diameter: 0.12, segments: 16, slice: 0.5, updatable: true }, s);
-        dome.scaling.y = 0.8;
-        dome.position.y = -0.024;
-        dome.bakeCurrentTransformIntoVertices();
-        const cap = MeshBuilder.CreateDisc(`it_${this.id}_cap`, { radius: 0.06, tessellation: 28 }, s);
-        cap.rotation.x = Math.PI / 2;
-        cap.position.y = -0.024;
-        cap.bakeCurrentTransformIntoVertices();
-        const merged = Mesh.MergeMeshes([dome, cap], true, true)!;
-        merged.name = `it_${this.id}`;
-        merged.material = lib.vertexColored("bun_mat", 0.75);
-        this.faces = classifyFaces(merged);
-        this.colorTarget = merged;
-        // Sesame seeds.
-        const seedMat = lib.solid("sesame", [0.95, 0.9, 0.75], 0.6);
-        for (let i = 0; i < 14; i++) {
-          const a = i * 2.39996 + seed;
-          const r = 0.012 + (i / 14) * 0.035;
-          const sd = MeshBuilder.CreateSphere(`it_${this.id}_seed${i}`, { diameter: 0.006, segments: 3 }, s);
-          sd.scaling.set(1, 0.5, 1.6);
+        const m = lathe(n, [
+          [0, -0.024],
+          [0.056, -0.024],
+          [0.061, -0.019],
+          [0.062, -0.01],
+          [0.057, 0.003],
+          [0.047, 0.013],
+          [0.032, 0.02],
+          [0.015, 0.0235],
+          [0, 0.024],
+        ], s);
+        m.material = texturedMaterial(lib, s, "bun_mat", "crumb", 0.45);
+        this.faces = classifyFaces(m);
+        this.colorTarget = m;
+        const seeds: Mesh[] = [];
+        for (let i = 0; i < 18; i++) {
+          const a = i * 2.39996 + seed * 6;
+          const r = 0.01 + (i / 18) * 0.04;
+          const sd = MeshBuilder.CreateSphere(`${n}_s${i}`, { diameter: 0.0065, segments: 3 }, s);
+          sd.scaling.set(0.9, 0.45, 1.7);
           const x = Math.cos(a) * r;
           const z = Math.sin(a) * r;
-          const y = Math.sqrt(Math.max(0, 0.06 * 0.06 - x * x - z * z)) * 0.8 - 0.024 + 0.001;
-          sd.position.set(x, y, z);
+          const t = r / 0.06;
+          sd.position.set(x, 0.024 - t * t * 0.03, z);
           sd.rotation.y = a;
-          sd.material = seedMat;
-          sd.parent = merged;
+          sd.bakeCurrentTransformIntoVertices();
+          seeds.push(sd);
         }
-        return merged;
+        const merged = Mesh.MergeMeshes(seeds, true, true)!;
+        merged.name = `${n}_seeds`;
+        merged.material = lib.solid("sesame", [0.97, 0.92, 0.78], 0.55);
+        merged.parent = m;
+        return m;
       }
-      case "cheese": {
-        const m = MeshBuilder.CreateGround(`it_${this.id}`, { width: 0.09, height: 0.09, subdivisions: 8, updatable: true }, s);
-        const mat = lib.solid("cheese_mat", [0.98, 0.68, 0.12], 0.5);
-        mat.backFaceCulling = false;
+      case "cheese":
+      case "swiss": {
+        const m = MeshBuilder.CreateGround(n, { width: 0.09, height: 0.09, subdivisions: 10, updatable: true }, s);
+        const mat =
+          this.kind === "swiss"
+            ? texturedMaterial(lib, s, "swiss_mat", "swiss", 0.55, { twoSided: true })
+            : (() => {
+                const c = lib.solid("cheese_mat", [1, 0.66, 0.12], 0.45);
+                c.backFaceCulling = false;
+                c.subSurface.isTranslucencyEnabled = false;
+                return c;
+              })();
         m.material = mat;
         this.cheeseBase = new Float32Array(m.getVerticesData(VertexBuffer.PositionKind)!);
+        paintUniform(m, [1, 1, 1]);
         return m;
       }
       case "lettuce": {
-        const m = MeshBuilder.CreateDisc(`it_${this.id}`, { radius: 0.062, tessellation: 32, updatable: true }, s);
+        const m = MeshBuilder.CreateDisc(n, { radius: 0.064, tessellation: 40, updatable: true }, s);
         m.rotation.x = Math.PI / 2;
         m.bakeCurrentTransformIntoVertices();
         const pos = m.getVerticesData(VertexBuffer.PositionKind)!;
         for (let i = 0; i < pos.length; i += 3) {
           const a = Math.atan2(pos[i + 2]!, pos[i]!);
           const r = Math.hypot(pos[i]!, pos[i + 2]!);
-          pos[i + 1] = Math.sin(a * 9 + seed) * 0.006 * (r / 0.062);
-          const k = 1 + Math.sin(a * 7 + seed) * 0.06;
+          pos[i + 1] = Math.sin(a * 11 + seed * 30) * 0.007 * (r / 0.064) ** 1.5;
+          const k = 1 + Math.sin(a * 7 + seed * 50) * 0.07;
           pos[i] = pos[i]! * k;
           pos[i + 2] = pos[i + 2]! * k;
         }
         m.updateVerticesData(VertexBuffer.PositionKind, pos);
-        const mat = lib.solid("lettuce_mat", [0.38, 0.68, 0.22], 0.55);
-        mat.backFaceCulling = false;
-        m.material = mat;
+        m.createNormals(true);
+        m.material = texturedMaterial(lib, s, "lettuce_mat", "lettuce", 0.5, { twoSided: true });
+        paintUniform(m, [1, 1, 1]);
+        this.uniformTargets.push({ mesh: m, base: [1, 1, 1], cooked: [0.7, 0.72, 0.4], crisp: [0.45, 0.4, 0.2] });
         return m;
       }
       case "tomato": {
-        const m = MeshBuilder.CreateCylinder(`it_${this.id}`, { diameter: 0.08, height: 0.01, tessellation: 24 }, s);
-        m.material = lib.solid("tomato_mat", [0.82, 0.13, 0.08], 0.35);
-        const inner = MeshBuilder.CreateCylinder(`it_${this.id}_in`, { diameter: 0.058, height: 0.0104, tessellation: 24 }, s);
-        inner.material = lib.solid("tomato_in", [0.92, 0.32, 0.22], 0.3);
-        inner.parent = m;
+        const m = MeshBuilder.CreateCylinder(n, { diameter: 0.082, height: 0.01, tessellation: 32 }, s);
+        m.material = texturedMaterial(lib, s, "tomato_mat", "tomato", 0.3);
+        paintUniform(m, [1, 1, 1]);
+        this.uniformTargets.push({ mesh: m, base: [1, 1, 1], cooked: [0.8, 0.6, 0.5], crisp: [0.5, 0.35, 0.25] });
         return m;
       }
       case "onion": {
-        const outer = MeshBuilder.CreateTorus(`it_${this.id}`, { diameter: 0.07, thickness: 0.007, tessellation: 24 }, s);
-        const inner = MeshBuilder.CreateTorus(`it_${this.id}_b`, { diameter: 0.046, thickness: 0.006, tessellation: 20 }, s);
-        const merged = Mesh.MergeMeshes([outer, inner], true, true)!;
-        merged.name = `it_${this.id}`;
-        merged.material = lib.solid("onion_mat", [0.9, 0.84, 0.9], 0.4);
-        return merged;
-      }
-      case "pickle": {
         const parts: Mesh[] = [];
-        for (let i = 0; i < 3; i++) {
-          const c = MeshBuilder.CreateCylinder(`it_${this.id}_${i}`, { diameter: 0.032, height: 0.004, tessellation: 14 }, s);
-          c.position.set(Math.cos(i * 2.1) * 0.022, 0.0005 * i, Math.sin(i * 2.1) * 0.022);
+        for (const [d, th, dx, dz] of [
+          [0.074, 0.007, 0, 0],
+          [0.052, 0.006, 0.004, -0.003],
+          [0.06, 0.006, -0.012, 0.01],
+          [0.034, 0.005, 0.012, 0.012],
+        ] as const) {
+          const t = MeshBuilder.CreateTorus(`${n}_${d}`, { diameter: d, thickness: th, tessellation: 28 }, s);
+          t.position.set(dx, 0, dz);
+          t.scaling.y = 0.8;
+          t.bakeCurrentTransformIntoVertices();
+          parts.push(t);
+        }
+        const m = Mesh.MergeMeshes(parts, true, true)!;
+        m.name = n;
+        m.material = lib.solid("onion_mat", [1, 1, 1], 0.35);
+        paintUniform(m, [0.95, 0.88, 0.95]);
+        this.uniformTargets.push({ mesh: m, base: [0.95, 0.88, 0.95], cooked: [0.82, 0.6, 0.35], crisp: [0.55, 0.32, 0.14] });
+        return m;
+      }
+      case "pickle":
+      case "jalapeno": {
+        const parts: Mesh[] = [];
+        const count = this.kind === "pickle" ? 4 : 5;
+        for (let i = 0; i < count; i++) {
+          const c = MeshBuilder.CreateCylinder(`${n}_${i}`, { diameter: this.kind === "pickle" ? 0.034 : 0.026, height: 0.004, tessellation: 18 }, s);
+          const a = i * 2.2 + seed * 5;
+          c.position.set(Math.cos(a) * 0.022, 0.0007 * i, Math.sin(a) * 0.022);
+          c.rotation.set(0.08 * Math.sin(a), a, 0.08 * Math.cos(a));
           c.bakeCurrentTransformIntoVertices();
           parts.push(c);
         }
-        const merged = Mesh.MergeMeshes(parts, true, true)!;
-        merged.name = `it_${this.id}`;
-        merged.material = lib.solid("pickle_mat", [0.4, 0.52, 0.16], 0.4);
-        return merged;
+        const m = Mesh.MergeMeshes(parts, true, true)!;
+        m.name = n;
+        m.material = texturedMaterial(lib, s, `${this.kind}_mat`, this.kind, 0.35);
+        paintUniform(m, [1, 1, 1]);
+        this.uniformTargets.push({ mesh: m, base: [1, 1, 1], cooked: [0.75, 0.7, 0.45], crisp: [0.5, 0.4, 0.25] });
+        return m;
+      }
+      case "bacon": {
+        const m = MeshBuilder.CreateGround(n, { width: 0.15, height: 0.044, subdivisionsX: 16, subdivisionsY: 3, updatable: true }, s);
+        const pos = m.getVerticesData(VertexBuffer.PositionKind)!;
+        for (let i = 0; i < pos.length; i += 3) pos[i + 1] = Math.sin(pos[i]! * 70 + seed * 10) * 0.0035 + Math.sin(pos[i + 2]! * 90) * 0.001;
+        m.updateVerticesData(VertexBuffer.PositionKind, pos);
+        m.createNormals(true);
+        m.material = texturedMaterial(lib, s, "bacon_mat", "bacon", 0.45, { twoSided: true });
+        paintUniform(m, [1, 1, 1]);
+        this.uniformTargets.push({ mesh: m, base: [1, 1, 1], cooked: [0.78, 0.5, 0.38], crisp: [0.52, 0.28, 0.16] });
+        return m;
+      }
+      case "mushroom": {
+        const parts: Mesh[] = [];
+        for (let i = 0; i < 5; i++) {
+          const sl = MeshBuilder.CreateCylinder(`${n}_${i}`, { diameter: 0.05, height: 0.006, tessellation: 20, arc: 0.5 }, s);
+          const a = i * 1.3 + seed * 7;
+          sl.rotation.y = a;
+          sl.position.set(Math.cos(a) * 0.016, 0.0012 * i, Math.sin(a) * 0.016);
+          sl.bakeCurrentTransformIntoVertices();
+          parts.push(sl);
+        }
+        const m = Mesh.MergeMeshes(parts, true, true)!;
+        m.name = n;
+        m.material = lib.solid("mushroom_mat", [1, 1, 1], 0.6);
+        paintUniform(m, [0.86, 0.76, 0.62]);
+        this.uniformTargets.push({ mesh: m, base: [0.86, 0.76, 0.62], cooked: [0.55, 0.38, 0.24], crisp: [0.35, 0.22, 0.12] });
+        return m;
+      }
+      case "egg": {
+        const white = MeshBuilder.CreateCylinder(n, { diameter: 0.1, height: 0.006, tessellation: 32, updatable: true }, s);
+        sculpt(white, 0.09, 0.001, seed);
+        white.material = lib.solid("egg_white", [1, 1, 1], 0.25);
+        paintUniform(white, [0.92, 0.92, 0.85]);
+        this.uniformTargets.push({ mesh: white, base: [0.93, 0.93, 0.88], cooked: [0.98, 0.97, 0.94], crisp: [0.8, 0.62, 0.38] });
+        const yolk = MeshBuilder.CreateSphere(`${n}_yolk`, { diameter: 0.034, segments: 12, slice: 0.5 }, s);
+        yolk.scaling.y = 0.55;
+        yolk.position.set(0.006, 0.003, -0.004);
+        yolk.material = lib.solid("egg_yolk", [1, 1, 1], 0.15);
+        yolk.parent = white;
+        paintUniform(yolk, [1, 0.62, 0.08]);
+        this.uniformTargets.push({ mesh: yolk, base: [1, 0.6, 0.06], cooked: [0.98, 0.72, 0.25], crisp: [0.85, 0.62, 0.3] });
+        return white;
       }
       case "tray": {
-        const base = MeshBuilder.CreateBox(`it_${this.id}`, { width: 0.4, height: 0.012, depth: 0.3 }, s);
+        const base = MeshBuilder.CreateBox(n, { width: 0.4, height: 0.012, depth: 0.3 }, s);
         base.position.y = -0.004;
         base.bakeCurrentTransformIntoVertices();
         const rims = [
-          [0, 0.004, 0.147, 0.4, 0.02, 0.006],
-          [0, 0.004, -0.147, 0.4, 0.02, 0.006],
-          [0.197, 0.004, 0, 0.006, 0.02, 0.3],
-          [-0.197, 0.004, 0, 0.006, 0.02, 0.3],
+          [0, 0.004, 0.147, 0.4, 0.02, 0.008],
+          [0, 0.004, -0.147, 0.4, 0.02, 0.008],
+          [0.197, 0.004, 0, 0.008, 0.02, 0.3],
+          [-0.197, 0.004, 0, 0.008, 0.02, 0.3],
         ].map(([x, y, z, w, h, d], i) => {
-          const r = MeshBuilder.CreateBox(`it_${this.id}_r${i}`, { width: w!, height: h!, depth: d! }, s);
+          const r = MeshBuilder.CreateBox(`${n}_r${i}`, { width: w!, height: h!, depth: d! }, s);
           r.position.set(x!, y!, z!);
           r.bakeCurrentTransformIntoVertices();
           return r;
         });
         const merged = Mesh.MergeMeshes([base, ...rims], true, true)!;
-        merged.name = `it_${this.id}`;
-        merged.material = lib.solid("tray_red", [0.62, 0.08, 0.06], 0.45);
-        const liner = MeshBuilder.CreatePlane(`it_${this.id}_liner`, { width: 0.3, height: 0.22 }, s);
+        merged.name = n;
+        merged.material = lib.solid("tray_red", [0.66, 0.07, 0.05], 0.38);
+        const liner = MeshBuilder.CreatePlane(`${n}_liner`, { width: 0.3, height: 0.22 }, s);
         liner.rotation.x = Math.PI / 2;
         liner.position.y = 0.0025;
-        liner.material = lib.solid("paper_liner", [0.95, 0.93, 0.86], 0.95);
+        liner.material = texturedMaterial(lib, s, "liner_mat", "liner", 0.95);
         liner.parent = merged;
         return merged;
       }
       case "spatula": {
-        const blade = MeshBuilder.CreateBox(`it_${this.id}`, { width: 0.1, height: 0.004, depth: 0.15 }, s);
+        const blade = MeshBuilder.CreateBox(n, { width: 0.1, height: 0.003, depth: 0.15 }, s);
         blade.position.z = 0.065;
         blade.bakeCurrentTransformIntoVertices();
-        blade.material = lib.solid("spatula_steel", [0.82, 0.82, 0.84], 0.25, 1);
-        const neck = MeshBuilder.CreateBox(`it_${this.id}_neck`, { width: 0.02, height: 0.004, depth: 0.05 }, s);
-        neck.position.set(0, 0.008, -0.03);
+        const bm = texturedMaterial(lib, s, "spatula_steel", "steel_slots", 0.22, { alpha: true, albedo: [0.86, 0.87, 0.89] });
+        bm.metallic = 0.45;
+        blade.material = bm;
+        const neck = MeshBuilder.CreateBox(`${n}_neck`, { width: 0.022, height: 0.004, depth: 0.06 }, s);
+        neck.position.set(0, 0.009, -0.032);
         neck.rotation.x = -0.35;
-        neck.material = blade.material;
+        neck.material = this.lib.solid("steel_plain", [0.8, 0.81, 0.83], 0.25, 0.45);
         neck.parent = blade;
-        const handle = MeshBuilder.CreateCylinder(`it_${this.id}_handle`, { diameter: 0.024, height: 0.12, tessellation: 12 }, s);
+        const handle = MeshBuilder.CreateCapsule(`${n}_handle`, { radius: 0.012, height: 0.13, tessellation: 12 }, s);
         handle.rotation.x = Math.PI / 2;
-        handle.position.set(0, 0.022, -0.11);
-        handle.material = lib.solid("handle_black", [0.05, 0.04, 0.04], 0.5);
+        handle.position.set(0, 0.022, -0.115);
+        handle.material = lib.solid("handle_wood", [0.45, 0.24, 0.12], 0.55);
         handle.parent = blade;
         return blade;
       }
-      case "sauce_bottle": {
-        const body = MeshBuilder.CreateCylinder(`it_${this.id}`, { diameter: 0.06, height: 0.15, tessellation: 20 }, s);
-        body.position.y = -0.015;
-        body.bakeCurrentTransformIntoVertices();
-        body.material = lib.solid("sauce_bottle", [0.95, 0.55, 0.1], 0.3);
-        const cap = MeshBuilder.CreateCylinder(`it_${this.id}_cap`, { diameterTop: 0.006, diameterBottom: 0.04, height: 0.04, tessellation: 16 }, s);
-        cap.position.y = 0.08;
-        cap.material = lib.solid("sauce_cap", [0.9, 0.88, 0.85], 0.4);
+      default: {
+        // Squeeze bottles.
+        const sauce = ITEMS[this.kind].sauce ?? "house";
+        const body = lathe(n, [
+          [0, -0.09],
+          [0.027, -0.09],
+          [0.03, -0.085],
+          [0.03, 0.035],
+          [0.026, 0.055],
+          [0.012, 0.065],
+          [0, 0.065],
+        ], s, 24);
+        const c = SAUCE_COLORS[sauce];
+        body.material = lib.solid(`bottle_${sauce}`, sauce === "mayo" ? [0.95, 0.93, 0.86] : c, 0.25);
+        const band = MeshBuilder.CreateCylinder(`${n}_band`, { diameter: 0.0615, height: 0.05, tessellation: 24 }, s);
+        band.position.y = -0.03;
+        const bandMat = new PBRMaterial(`bottle_band_${sauce}`, s);
+        bandMat.albedoTexture = bottleLabel(s, ITEMS[this.kind].label, "#f7f1e3", "#2a1d14");
+        bandMat.roughness = 0.6;
+        bandMat.metallic = 0;
+        band.material = bandMat;
+        band.parent = body;
+        const cap = MeshBuilder.CreateCylinder(`${n}_cap`, { diameterTop: 0.006, diameterBottom: 0.03, height: 0.035, tessellation: 16 }, s);
+        cap.position.y = 0.082;
+        cap.material = lib.solid(`cap_${sauce}`, sauce === "mustard" ? [0.95, 0.75, 0.1] : sauce === "ketchup" ? [0.85, 0.1, 0.06] : [0.9, 0.88, 0.85], 0.4);
         cap.parent = body;
         return body;
       }
@@ -295,13 +468,14 @@ export class ItemView {
   setAppearance(food: FoodState | null, meta: ItemSnapshotLike): void {
     this.food = food;
     const key = food
-      ? `${food.cookA.toFixed(2)}|${food.cookB.toFixed(2)}|${food.inner.toFixed(2)}|${food.burn.toFixed(2)}|${food.melt.toFixed(2)}|${food.toast.toFixed(2)}|${food.sauce.toFixed(2)}|${food.down}|${meta.flip > 127 ? 1 : 0}|${food.dirty}`
+      ? `${food.cookA.toFixed(2)}|${food.cookB.toFixed(2)}|${food.inner.toFixed(2)}|${food.burn.toFixed(2)}|${food.melt.toFixed(2)}|${food.toast.toFixed(2)}|${food.sauce.toFixed(2)}|${food.sauceMask}|${food.down}|${meta.flip > 127 ? 1 : 0}|${food.dirty}`
       : `${meta.level}`;
     if (key === this.appearanceKey) return;
     this.appearanceKey = key;
     if (!food) return;
 
-    if (this.kind === "patty" && this.colorTarget && this.faces) {
+    if (isPatty(this.kind) && this.colorTarget && this.faces) {
+      const veggie = this.kind === "veggie_patty";
       // Map the authoritative "down" side onto mesh faces; during the second half of a flip the
       // mesh is upside down, so the mapping inverts until the flip lands.
       const flipping = meta.flip > 127;
@@ -311,16 +485,26 @@ export class ItemView {
       paintFaces(
         this.colorTarget,
         this.faces,
-        dirty(pattySurface(downCook, food.burn), food.dirty),
-        dirty(pattyEdge(food.inner, food.burn), food.dirty),
-        dirty(pattySurface(upCook, food.burn * 0.5), food.dirty),
+        dirty(pattySurface(downCook, food.burn, veggie), food.dirty),
+        dirty(pattyEdge(food.inner, food.burn, veggie), food.dirty),
+        dirty(pattySurface(upCook, food.burn * 0.5, veggie), food.dirty),
       );
+      // Grill marks appear on a side once it has seared.
+      const mark = (c: number) => Math.max(0, Math.min(1, (c - 0.3) / 0.35));
+      if (this.marksTop) {
+        this.marksTop.isVisible = mark(upCook) > 0.02;
+        this.marksTop.visibility = mark(upCook);
+      }
+      if (this.marksBottom) {
+        this.marksBottom.isVisible = mark(downCook) > 0.02;
+        this.marksBottom.visibility = mark(downCook);
+      }
     } else if ((this.kind === "bun_bottom" || this.kind === "bun_top") && this.colorTarget && this.faces) {
       const cut = dirty(toastColor(food.toast, food.burn), food.dirty);
       const crust = dirty(CRUST, food.dirty);
       if (this.kind === "bun_bottom") paintFaces(this.colorTarget, this.faces, crust, crust, cut);
       else paintFaces(this.colorTarget, this.faces, cut, crust, crust);
-    } else if (this.kind === "cheese" && this.cheeseBase) {
+    } else if ((this.kind === "cheese" || this.kind === "swiss") && this.cheeseBase) {
       // Cheese softens and droops over the patty edge as it melts.
       const mesh = this.root;
       const pos = new Float32Array(this.cheeseBase);
@@ -329,40 +513,36 @@ export class ItemView {
         const x = pos[i]!;
         const z = pos[i + 2]!;
         const r = Math.hypot(x, z);
-        const over = Math.max(0, r - 0.04);
+        const over = Math.max(0, r - 0.042);
         const spread = 1 + melt * 0.12;
         pos[i] = x * spread;
         pos[i + 2] = z * spread;
-        pos[i + 1] = -over * over * 60 * melt * 0.35 - over * melt * 0.25;
+        pos[i + 1] = -over * over * 60 * melt * 0.35 - over * melt * 0.3 + Math.sin(x * 120 + z * 80) * 0.0006 * melt;
       }
       mesh.updateVerticesData(VertexBuffer.PositionKind, pos);
-      const mat = mesh.material as PBRMaterial;
-      if (melt > 0.05 && mat.name === "cheese_mat") {
-        mesh.material = mat.clone(`cheese_mat_${this.id}`);
-      }
-      const own = mesh.material as PBRMaterial;
-      if (own.name !== "cheese_mat") {
-        own.roughness = 0.5 - melt * 0.25;
-        const c = dirty(mix([0.98, 0.7, 0.14], [0.95, 0.58, 0.08], melt), food.dirty);
-        own.albedoColor = new Color3(...c);
-      }
-    } else if (food.dirty && !this.root.material?.name.endsWith("_dirty")) {
-      const base = this.root.material as PBRMaterial;
-      const dm = base.clone(`${base.name}_dirty`);
-      dm.albedoColor = base.albedoColor.scale(0.55);
-      this.root.material = dm;
+      mesh.createNormals(true);
+      const tint = this.kind === "swiss" ? mix([1, 1, 1], [1.02, 0.95, 0.82], melt) : mix([1, 1, 1], [0.97, 0.86, 0.72], melt);
+      paintUniform(mesh, dirty(tint, food.dirty));
+    } else if (this.uniformTargets.length > 0) {
+      const cook = Math.max(food.cookA, food.cookB);
+      for (const t of this.uniformTargets) paintUniform(t.mesh, dirty(cookTint(t.base, t.cooked, t.crisp, cook, food.burn), food.dirty));
     }
 
-    // Sauce shows as a glossy blob sized by the amount applied.
+    // Sauce shows as a glossy blob in the colour of the sauces applied.
     if (food.sauce > 0.02) {
       if (!this.sauceBlob) {
-        this.sauceBlob = MeshBuilder.CreateSphere(`it_${this.id}_sauce`, { diameter: 1, segments: 10 }, this.scene);
-        this.sauceBlob.material = this.lib.solid("sauce_mat", [0.92, 0.45, 0.08], 0.15);
+        this.sauceBlob = MeshBuilder.CreateSphere(`it_${this.id}_sauce`, { diameter: 1, segments: 12 }, this.scene);
+        this.sauceBlob.material = this.lib.solid("sauce_mat", [1, 1, 1], 0.12);
         this.sauceBlob.parent = this.root;
         setPick(this.sauceBlob, { type: "item", id: this.id });
       }
+      const sauces = saucesInMask(food.sauceMask);
+      const c = sauces.length
+        ? sauces.reduce<RGB>((acc, k) => [acc[0] + SAUCE_COLORS[k][0] / sauces.length, acc[1] + SAUCE_COLORS[k][1] / sauces.length, acc[2] + SAUCE_COLORS[k][2] / sauces.length], [0, 0, 0])
+        : SAUCE_COLORS.house;
+      paintUniform(this.sauceBlob, c);
       const size = Math.min(0.1, 0.03 + food.sauce * 0.05);
-      this.sauceBlob.scaling.set(size, 0.006 + food.sauce * 0.003, size);
+      this.sauceBlob.scaling.set(size, 0.005 + food.sauce * 0.003, size * 0.9);
       this.sauceBlob.position.y = ITEMS[this.kind].layerHeight / 2 + 0.002;
     }
   }
@@ -392,15 +572,24 @@ export function describeFood(kind: ItemKind, food: FoodState | null): string[] {
   if (!food) return [ITEMS[kind].label];
   const lines: string[] = [ITEMS[kind].label];
   const side = (c: number) => (c < 0.2 ? "raw" : c < 0.5 ? "lightly browned" : c < 0.95 ? "nicely browned" : c < 1.2 ? "dark" : "charred");
-  if (kind === "patty") {
+  if (isPatty(kind)) {
     const down = food.down === 0 ? food.cookA : food.cookB;
     const up = food.down === 0 ? food.cookB : food.cookA;
     lines.push(`Underside: ${side(down)}`, `Top: ${side(up)}`, `Inside: ${pattyDoneness(food)}`);
   }
-  if (kind === "cheese") lines.push(food.melt < 0.15 ? "Firm" : food.melt < 0.45 ? "Softening" : "Melted");
+  const cook = Math.max(food.cookA, food.cookB);
+  if (kind === "bacon") lines.push(cook < 0.45 ? "Floppy — keep cooking" : cook < 1 ? "Crispy" : "Very crispy");
+  if (kind === "egg") lines.push(cook < 0.45 ? "Runny" : "Set");
+  if (kind === "mushroom") lines.push(cook < 0.45 ? "Raw" : "Grilled");
+  if (kind === "onion") lines.push(cook > 0.35 ? "Grilled" : "Raw");
+  if (kind === "cheese" || kind === "swiss") lines.push(food.melt < 0.15 ? "Firm" : food.melt < 0.45 ? "Softening" : "Melted");
   if (kind === "bun_bottom" || kind === "bun_top") lines.push(food.toast < 0.2 ? "Untoasted" : food.toast < 1 ? "Toasted" : "Over-toasted");
+  if (food.burn > 0.25) lines.push("Burnt");
   lines.push(food.temp > 55 ? "Hot" : food.temp > 40 ? "Warm" : food.temp > 15 ? "Room temperature" : "Cold");
-  if (food.sauce > 0.05) lines.push(food.sauce > 1.6 ? "Drowning in sauce" : "Sauced");
+  if (food.sauce > 0.05) {
+    const names = saucesInMask(food.sauceMask);
+    lines.push(food.sauce > 1.6 ? "Drowning in sauce" : `Sauce: ${names.join(", ") || "yes"}`);
+  }
   if (food.dirty) lines.push("Dropped — throw it away");
   return lines;
 }

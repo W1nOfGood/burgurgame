@@ -33,6 +33,7 @@ export class TouchControls {
         <button data-act="crouchToggle" class="tb tb-toggle" aria-pressed="false" aria-label="Crouch">Crouch</button>
         <button data-act="inspect" class="tb" aria-label="Inspect">Inspect</button>
         <button data-act="ping" class="tb tb-small" aria-label="Ping teammates">Ping</button>
+        <button data-act="recipes" class="tb tb-small" aria-label="Recipe book">Recipes</button>
       </div>
       <button data-act="menu" class="tb tb-menu" aria-label="Menu and settings">☰</button>
     `;

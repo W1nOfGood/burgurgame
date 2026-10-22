@@ -1,7 +1,7 @@
 import { INTERACTION } from "@ahb/data";
 import type { Settings } from "../settings.js";
 
-export type Action = "use" | "setDown" | "inspect" | "pause" | "ping" | "tickets" | "flick" | "crouchToggle";
+export type Action = "use" | "setDown" | "inspect" | "pause" | "ping" | "tickets" | "recipes" | "flick" | "crouchToggle";
 
 export interface InputHandlers {
   /** Primary press on the scene. Return true to capture subsequent drag deltas (knob, drawer, squeeze). */
@@ -147,6 +147,7 @@ export class InputManager {
     else if (b === "inspect") this.handlers.action("inspect");
     else if (b === "ping") this.handlers.action("ping");
     else if (b === "tickets") this.handlers.action("tickets");
+    else if (b === "recipes") this.handlers.action("recipes");
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {

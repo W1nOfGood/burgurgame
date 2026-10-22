@@ -16,6 +16,7 @@ export interface KeyBindings {
   inspect: string;
   ping: string;
   tickets: string;
+  recipes: string;
 }
 
 export interface Settings {
@@ -30,6 +31,8 @@ export interface Settings {
   simpleInteractions: boolean;
   showLabels: boolean;
   showTicketOverlay: boolean;
+  /** Show each ticket's build. Off by default: the menu is meant to be memorised. */
+  showRecipeHints: boolean;
   reducedEffects: boolean;
   subtitles: boolean;
   master: number;
@@ -58,6 +61,7 @@ export const DEFAULT_BINDINGS: KeyBindings = {
   inspect: "KeyF",
   ping: "KeyT",
   tickets: "Tab",
+  recipes: "KeyR",
 };
 
 export function isTouchDevice(): boolean {
@@ -78,6 +82,7 @@ export function defaultSettings(): Settings {
     simpleInteractions: false,
     showLabels: true,
     showTicketOverlay: true,
+    showRecipeHints: false,
     reducedEffects: false,
     subtitles: true,
     master: 0.8,

@@ -16,11 +16,12 @@ export function writeFoodBytes(item: ItemState, s: FoodState): void {
   set("toast", toByte(s.toast, FOOD_BYTE_RANGE.toast));
   set("sauce", toByte(s.sauce, FOOD_BYTE_RANGE.sauce));
   set("down", s.down);
+  set("sauceMask", s.sauceMask & 255);
   set("dirty", s.dirty);
 }
 
 /** Reads replicated bytes back into a FoodState (client presentation, tests). */
-export function readFoodBytes(item: Pick<ItemState, "cookA" | "cookB" | "inner" | "burn" | "temp" | "moisture" | "melt" | "toast" | "sauce" | "down" | "dirty">): FoodState {
+export function readFoodBytes(item: Pick<ItemState, "cookA" | "cookB" | "inner" | "burn" | "temp" | "moisture" | "melt" | "toast" | "sauce" | "down" | "dirty" | "sauceMask">): FoodState {
   return {
     cookA: fromByte(item.cookA, FOOD_BYTE_RANGE.cook),
     cookB: fromByte(item.cookB, FOOD_BYTE_RANGE.cook),
@@ -31,6 +32,7 @@ export function readFoodBytes(item: Pick<ItemState, "cookA" | "cookB" | "inner" 
     melt: fromByte(item.melt, FOOD_BYTE_RANGE.melt),
     toast: fromByte(item.toast, FOOD_BYTE_RANGE.toast),
     sauce: fromByte(item.sauce, FOOD_BYTE_RANGE.sauce),
+    sauceMask: item.sauceMask ?? 0,
     down: item.down === 1 ? 1 : 0,
     dirty: item.dirty,
     age: 0,

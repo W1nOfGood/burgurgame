@@ -32,30 +32,50 @@ export class FirstPersonHands {
   constructor(scene: Scene, camera: Camera, lib: MaterialLibrary) {
     const skin = lib.solid("fp_skin", [0.86, 0.64, 0.5], 0.55);
     const sleeve = lib.solid("fp_sleeve", [0.92, 0.9, 0.86], 0.8);
+    const cuff = lib.solid("fp_cuff", [0.75, 0.15, 0.12], 0.7);
     const build = (name: string, side: 1 | -1, fingers: Mesh[]): TransformNode => {
       const root = new TransformNode(name, scene);
       root.parent = camera;
-      const palm = MeshBuilder.CreateBox(`${name}_palm`, { width: 0.08, height: 0.025, depth: 0.09 }, scene);
+      // Rounded palm.
+      const palm = MeshBuilder.CreateSphere(`${name}_palm`, { diameter: 1, segments: 12 }, scene);
+      palm.scaling.set(0.085, 0.032, 0.095);
       palm.material = skin;
       palm.parent = root;
+      const palmNode = new TransformNode(`${name}_palm_node`, scene);
+      palmNode.parent = root;
+      // Four two-segment fingers that curl with the grip.
       for (let i = 0; i < 4; i++) {
-        const f = MeshBuilder.CreateCapsule(`${name}_f${i}`, { radius: 0.009, height: 0.06, tessellation: 6 }, scene);
-        f.rotation.x = Math.PI / 2;
-        f.position.set(-0.03 + i * 0.02, 0, 0.065);
-        f.material = skin;
-        f.parent = palm;
-        fingers.push(f);
+        const base = MeshBuilder.CreateCapsule(`${name}_f${i}`, { radius: 0.0095, height: 0.042, tessellation: 8 }, scene);
+        base.rotation.x = Math.PI / 2;
+        base.position.set(-0.029 + i * 0.019, 0.002, 0.058 - Math.abs(i - 1.5) * 0.006);
+        base.material = skin;
+        base.parent = palmNode;
+        const tip = MeshBuilder.CreateCapsule(`${name}_f${i}_tip`, { radius: 0.0088, height: 0.034, tessellation: 8 }, scene);
+        tip.position.set(0, 0.026, 0);
+        tip.material = skin;
+        tip.parent = base;
+        fingers.push(base);
       }
-      const thumb = MeshBuilder.CreateCapsule(`${name}_thumb`, { radius: 0.01, height: 0.05, tessellation: 6 }, scene);
-      thumb.rotation.set(Math.PI / 2, 0, side * 0.9);
-      thumb.position.set(side * -0.045, 0.004, 0.02);
+      const thumb = MeshBuilder.CreateCapsule(`${name}_thumb`, { radius: 0.0105, height: 0.05, tessellation: 8 }, scene);
+      thumb.rotation.set(Math.PI / 2.4, 0, side * 0.9);
+      thumb.position.set(side * -0.046, -0.004, 0.018);
       thumb.material = skin;
-      thumb.parent = palm;
-      const cuff = MeshBuilder.CreateCylinder(`${name}_sleeve`, { diameter: 0.075, height: 0.22, tessellation: 12 }, scene);
-      cuff.rotation.x = Math.PI / 2;
-      cuff.position.set(0, -0.005, -0.15);
-      cuff.material = sleeve;
-      cuff.parent = root;
+      thumb.parent = palmNode;
+      const wrist = MeshBuilder.CreateCylinder(`${name}_wrist`, { diameterTop: 0.06, diameterBottom: 0.07, height: 0.08, tessellation: 12 }, scene);
+      wrist.rotation.x = Math.PI / 2;
+      wrist.position.set(0, -0.004, -0.07);
+      wrist.material = skin;
+      wrist.parent = root;
+      const cuffBand = MeshBuilder.CreateCylinder(`${name}_cuff`, { diameter: 0.085, height: 0.03, tessellation: 14 }, scene);
+      cuffBand.rotation.x = Math.PI / 2;
+      cuffBand.position.set(0, -0.004, -0.11);
+      cuffBand.material = cuff;
+      cuffBand.parent = root;
+      const sleeveMesh = MeshBuilder.CreateCylinder(`${name}_sleeve`, { diameterTop: 0.085, diameterBottom: 0.1, height: 0.22, tessellation: 14 }, scene);
+      sleeveMesh.rotation.x = Math.PI / 2;
+      sleeveMesh.position.set(0, -0.004, -0.23);
+      sleeveMesh.material = sleeve;
+      sleeveMesh.parent = root;
       for (const m of root.getChildMeshes()) {
         m.isPickable = false;
         m.metadata = { placeholder: true, hands: true };
@@ -111,7 +131,11 @@ export class FirstPersonHands {
     ] as const) {
       Vector3.LerpToRef(node.position, target.pos.add(new Vector3(0, bob, 0)), k, node.position);
       Vector3.LerpToRef(node.rotation, target.rot, k, node.rotation);
-      for (const f of fingers) f.rotation.x = Math.PI / 2 + target.curl * 0.9;
+      for (const f of fingers) {
+        f.rotation.x = Math.PI / 2 + target.curl * 0.8;
+        const tip = f.getChildMeshes()[0];
+        if (tip) tip.rotation.x = target.curl * 0.9;
+      }
     }
   }
 

@@ -7,16 +7,19 @@ import {
   INITIAL_ITEMS,
   INTERACTION,
   ITEMS,
-  MODIFIERS,
   NET,
   PLAYER,
   RECIPES,
+  RECIPE_IDS,
   ROOM,
+  SAUCE_BIT,
   SHIFT,
   SHIFT_SWITCH,
   SPAWN_POINTS,
   SPAWN_YAW,
   STOCK_KEYS,
+  isPatty,
+  modifiersFor,
   stockKeyFor,
   type ItemKind,
   type ModifierId,
@@ -867,12 +870,12 @@ export class Kitchen {
     if (rev !== undefined && target.s.rev !== rev) return fail("Someone else got there first");
     const root = this.rootOf(target);
     if (root.holder || root.locked || root.flip) return fail("That's busy");
-    if (root.kind !== "patty" && root.kind !== "bun_bottom" && root.kind !== "bun_top") return fail("The spatula is for patties and buns");
+    if (!ITEMS.spatula.accepts.includes(root.kind)) return fail("The spatula is for things on the grill");
     const reach = this.canReach(p, { x: root.pos.x, y: root.pos.y + 0.02, z: root.pos.z });
     if (!reach.ok) return reach;
 
     if (action === "assistFlip") {
-      if (root.kind !== "patty") return fail("Only patties need flipping");
+      if (!isPatty(root.kind) && root.kind !== "bacon") return fail("Only patties and bacon need flipping");
       if (root.child) return fail("Take the cheese off before flipping");
       this.removeBody(root);
       this.startFlip(root, { ...root.pos });
@@ -899,7 +902,8 @@ export class Kitchen {
     if (!p) return fail("Not connected");
     if (this.state.paused) return fail("The room is paused");
     const bottle = this.heldItem(p);
-    if (!bottle || bottle.kind !== "sauce_bottle") return fail("Grab the sauce bottle first");
+    const sauceKind = bottle ? ITEMS[bottle.kind].sauce : undefined;
+    if (!bottle || !sauceKind) return fail("Grab a sauce bottle first");
     const target = this.items.get(targetId);
     if (!target) return fail("That's gone");
     const top = this.topOf(this.rootOf(target));
@@ -919,6 +923,7 @@ export class Kitchen {
     }
     const amount = Math.min(bottle.level * 4, INTERACTION.sauceFlowRate * intensity * elapsed);
     top.food.sauce = Math.min(2, top.food.sauce + amount);
+    if (amount > 0.005) top.food.sauceMask |= SAUCE_BIT[sauceKind];
     bottle.level = Math.max(0, bottle.level - amount / 4);
     bottle.s.level = Math.round(bottle.level * 255);
     return OK;
@@ -1283,7 +1288,7 @@ export class Kitchen {
       const openCount = [...this.orders.values()].filter((o) => o.s.status === "open").length;
       const maxOpen = SHIFT.maxOpenOrdersBase + players - 1;
       if (st.shiftTime >= this.nextOrderAt) {
-        if (openCount < maxOpen) this.createOrder();
+        if (openCount < maxOpen) this.createOrder(this.randomRecipe());
         this.nextOrderAt = st.shiftTime + interval * (0.75 + this.rng() * 0.5);
       }
       if (st.mode === "normal" && st.shiftTime >= SHIFT.normalShiftSeconds) {
@@ -1308,6 +1313,19 @@ export class Kitchen {
     }
   }
 
+  /** Recipes unlock in tiers as the shift goes on, so the menu grows while cooks learn it. */
+  unlockedRecipes(): RecipeId[] {
+    const st = this.state;
+    const mode = st.mode === "normal" ? "normal" : "relaxed";
+    const tier = st.shiftTime >= SHIFT.tier3After[mode] ? 3 : st.shiftTime >= SHIFT.tier2After[mode] ? 2 : 1;
+    return RECIPE_IDS.filter((id) => RECIPES[id].enabled && RECIPES[id].tier <= tier);
+  }
+
+  private randomRecipe(): RecipeId {
+    const pool = this.unlockedRecipes();
+    return pool[Math.floor(this.rng() * pool.length)] ?? "classic_cheeseburger";
+  }
+
   createOrder(recipe: RecipeId = "classic_cheeseburger", modifiers?: ModifierId[]): OrderState {
     const st = this.state;
     const number = st.nextOrder;
@@ -1317,7 +1335,7 @@ export class Kitchen {
     o.recipe = recipe;
     o.createdAt = st.shiftTime;
     o.status = "open";
-    const mods = modifiers ?? this.randomModifiers();
+    const mods = modifiers ?? this.randomModifiers(recipe);
     for (const m of mods) o.modifiers.push(m);
     const id = `o${number}_${Math.floor(st.shiftTime * 10)}`;
     this.orders.set(id, { id, s: o, reservedBy: null });
@@ -1332,10 +1350,11 @@ export class Kitchen {
     return o;
   }
 
-  private randomModifiers(): ModifierId[] {
-    if (this.rng() > 0.35) return [];
-    const enabled = (Object.keys(MODIFIERS) as ModifierId[]).filter((m) => MODIFIERS[m].enabled);
-    return [enabled[Math.floor(this.rng() * enabled.length)]!];
+  private randomModifiers(recipe: RecipeId): ModifierId[] {
+    if (this.rng() > SHIFT.modifierChance) return [];
+    const options = modifiersFor(recipe);
+    if (options.length === 0) return [];
+    return [options[Math.floor(this.rng() * options.length)]!];
   }
 
   /** Writes runtime values into replicated state, only where they changed. */

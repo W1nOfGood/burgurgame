@@ -153,23 +153,37 @@ export const CHILLER_DRAWER: Drawer = {
 
 const PREP_TOP = 0.92;
 
+/** Cold rail along the back edge of the assembly island. */
+const RAIL_Y = 0.92;
+const RAIL_Z = 2.48;
+const RAIL_HALF: Vec3 = [0.11, 0.05, 0.085];
+
 export const DISPENSERS: readonly Dispenser[] = [
+  // Prep counter, back row.
   { id: "bin_bun_bottom", kind: "bun_bottom", center: [-3.85, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
   { id: "bin_bun_top", kind: "bun_top", center: [-3.45, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
   { id: "bin_cheese", kind: "cheese", center: [-3.02, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
-  { id: "bin_lettuce", kind: "lettuce", center: [-2.6, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
-  { id: "bin_tomato", kind: "tomato", center: [-2.18, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
-  { id: "bin_onion", kind: "onion", center: [-1.76, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
-  { id: "bin_pickle", kind: "pickle", center: [-1.34, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
-  // Patties live in the chiller drawer under the prep counter. The centre is the drawer's
-  // fully open position; it is only reachable when the drawer is open.
-  { id: "drawer_patty", kind: "patty", center: [-1.6, 0.66, 3.95], half: [0.38, 0.06, 0.24], requiresDrawer: 0.55 },
+  { id: "bin_swiss", kind: "swiss", center: [-2.6, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
+  { id: "bin_lettuce", kind: "lettuce", center: [-2.18, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
+  { id: "bin_tomato", kind: "tomato", center: [-1.76, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
+  { id: "bin_onion", kind: "onion", center: [-1.34, PREP_TOP, 4.72], half: [0.17, 0.05, 0.2] },
+  // Cold rail on the assembly island.
+  { id: "bin_pickle", kind: "pickle", center: [-1.7, RAIL_Y, RAIL_Z], half: RAIL_HALF },
+  { id: "bin_jalapeno", kind: "jalapeno", center: [-1.45, RAIL_Y, RAIL_Z], half: RAIL_HALF },
+  { id: "bin_mushroom", kind: "mushroom", center: [-1.2, RAIL_Y, RAIL_Z], half: RAIL_HALF },
+  { id: "bin_bacon", kind: "bacon", center: [-0.95, RAIL_Y, RAIL_Z], half: RAIL_HALF },
+  { id: "bin_egg", kind: "egg", center: [-0.7, RAIL_Y, RAIL_Z], half: RAIL_HALF },
+  // Beef and veggie patties live in the chiller drawer under the prep counter. Centres are the
+  // drawer's fully open position; they are only reachable when the drawer is open.
+  { id: "drawer_patty", kind: "patty", center: [-1.8, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
+  { id: "drawer_veggie", kind: "veggie_patty", center: [-1.4, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
   { id: "tray_stack", kind: "tray", center: [-1.95, 0.95, 2.2], half: [0.22, 0.05, 0.17] },
 ];
 
 /** Areas where placement is refused even though they sit on a surface (bin openings). */
 export const NO_PLACE_RECTS: readonly (Rect & { y: number })[] = [
   { minX: -4.05, maxX: -1.15, minZ: 4.5, maxZ: 4.95, y: PREP_TOP },
+  { minX: -1.83, maxX: -0.57, minZ: 2.38, maxZ: 2.6, y: RAIL_Y },
 ];
 
 export const SHIFT_SWITCH: Vec3 = [2.62, 0.9, 0.37];
@@ -181,10 +195,16 @@ export interface InitialItem {
 }
 
 export const INITIAL_ITEMS: readonly InitialItem[] = [
-  { kind: "spatula", position: [1.0, 0.94, 2.35], yaw: Math.PI / 2 },
-  { kind: "sauce_bottle", position: [0.7, 1.01, 2.05] },
-  { kind: "tray", position: [-0.9, 0.93, 2.2] },
-  { kind: "tray", position: [-0.2, 0.93, 2.2] },
+  { kind: "spatula", position: [1.0, 0.94, 2.42], yaw: Math.PI / 2 },
+  { kind: "spatula", position: [0.6, 0.94, 2.45], yaw: Math.PI / 2 },
+  // Sauce station on the front-right of the island.
+  { kind: "ketchup_bottle", position: [0.3, 1.01, 1.98] },
+  { kind: "mustard_bottle", position: [0.45, 1.01, 1.98] },
+  { kind: "mayo_bottle", position: [0.6, 1.01, 1.98] },
+  { kind: "bbq_bottle", position: [0.75, 1.01, 1.98] },
+  { kind: "sauce_bottle", position: [0.9, 1.01, 1.98] },
+  { kind: "tray", position: [-0.9, 0.93, 2.15] },
+  { kind: "tray", position: [-0.2, 0.93, 2.15] },
 ];
 
 export const SPAWN_POINTS: readonly Vec3[] = [

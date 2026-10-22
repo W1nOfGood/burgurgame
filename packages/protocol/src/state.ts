@@ -77,6 +77,8 @@ export const ItemState = schema(
     layer: t.uint8().default(0),
     /** Root id of the stack this item belongs to ("" when it is a root itself). */
     root: t.string().default(""),
+    /** Sauces applied to this layer (SAUCE_BIT flags). */
+    sauceMask: t.uint8().default(0),
   },
   "ItemState",
 );

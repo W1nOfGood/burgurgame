@@ -5,6 +5,10 @@ import { PointLight } from "@babylonjs/core/Lights/pointLight";
 import { SpotLight } from "@babylonjs/core/Lights/spotLight";
 import { ShadowGenerator } from "@babylonjs/core/Lights/Shadows/shadowGenerator";
 import "@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent";
+import { GlowLayer } from "@babylonjs/core/Layers/glowLayer";
+import { ReflectionProbe } from "@babylonjs/core/Probes/reflectionProbe";
+import { RenderTargetTexture } from "@babylonjs/core/Materials/Textures/renderTargetTexture";
+import { HDRFiltering } from "@babylonjs/core/Materials/Textures/Filtering/hdrFiltering";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
@@ -33,6 +37,8 @@ import {
 import type { RestaurantState } from "@ahb/protocol";
 import type { GraphicsPreset } from "../settings.js";
 import { MaterialLibrary } from "./materials.js";
+import { foodTexture } from "./foodTextures.js";
+import { buildProps } from "./props.js";
 
 export type PickInfo =
   | { type: "surface"; kind: SurfaceKind }
@@ -101,11 +107,16 @@ function mergeGroup(name: string, meshes: Mesh[], pick: PickInfo | null): Mesh |
 const BIN_LABELS: Partial<Record<ItemKind, string>> = {
   bun_bottom: "BUN BASE",
   bun_top: "BUN TOP",
-  cheese: "CHEESE",
+  cheese: "CHEDDAR",
+  swiss: "SWISS",
   lettuce: "LETTUCE",
   tomato: "TOMATO",
   onion: "ONION",
   pickle: "PICKLE",
+  jalapeno: "JALAPEÑO",
+  mushroom: "MUSHROOM",
+  bacon: "BACON",
+  egg: "EGGS",
 };
 
 const FOOD_BIN_COLORS: Partial<Record<ItemKind, [number, number, number]>> = {
@@ -117,6 +128,12 @@ const FOOD_BIN_COLORS: Partial<Record<ItemKind, [number, number, number]>> = {
   onion: [0.88, 0.82, 0.86],
   pickle: [0.36, 0.48, 0.16],
   patty: [0.78, 0.36, 0.38],
+  swiss: [0.95, 0.88, 0.6],
+  jalapeno: [0.2, 0.5, 0.15],
+  mushroom: [0.7, 0.58, 0.45],
+  bacon: [0.8, 0.4, 0.38],
+  egg: [0.95, 0.92, 0.85],
+  veggie_patty: [0.55, 0.6, 0.35],
 };
 
 export interface GraphicsBudget {
@@ -224,6 +241,44 @@ export class RestaurantView {
     this.boardTex = this.buildMenuBoard(m);
     this.buildDecor(m);
     this.buildExterior(m);
+    const props = buildProps(scene, m);
+    // A restrained glow on neon, lamps and panels only (spec §4: no excessive bloom).
+    if (preset === "medium" || preset === "high") {
+      const glow = new GlowLayer("glow", scene, { mainTextureRatio: 0.25, blurKernelSize: 32 });
+      glow.intensity = 0.55;
+      for (const mesh of [...props.glowing, ...this.glowMeshes]) glow.addIncludedOnlyMesh(mesh);
+    }
+  }
+
+  private readonly glowMeshes: Mesh[] = [];
+
+  /**
+   * Captures the restaurant once into a cube map and prefilters it so metals and glossy food get
+   * believable reflections. Falls back silently (capped metalness stays) if unsupported.
+   */
+  async enableReflections(preset: GraphicsPreset): Promise<boolean> {
+    if (preset === "low" || preset === "tablet") return false;
+    try {
+      const probe = new ReflectionProbe("env_probe", preset === "high" ? 256 : 128, this.scene, true, true);
+      probe.position.set(-0.6, 1.5, 2.6);
+      for (const mesh of this.scene.meshes) {
+        if (mesh.isPickable === false && (mesh.name.startsWith("it_") || mesh.name.startsWith("fp_"))) continue;
+        if (mesh.name.startsWith("avatar_") || mesh.name.startsWith("it_") || mesh.name.startsWith("fp_")) continue;
+        probe.renderList!.push(mesh);
+      }
+      probe.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+      const cube = probe.cubeTexture;
+      await new Promise<void>((resolve) => cube.onAfterRenderObservable.addOnce(() => resolve()));
+      const filtering = new HDRFiltering(this.scene.getEngine(), { hdrScale: 1 });
+      await filtering.prefilter(cube);
+      this.scene.environmentTexture = cube;
+      this.scene.environmentIntensity = 0.75;
+      this.materials.restoreMetalness();
+      return true;
+    } catch (err) {
+      console.warn("Reflections unavailable; keeping capped metalness", err);
+      return false;
+    }
   }
 
   private buildGrill(m: MaterialLibrary): void {
@@ -272,7 +327,6 @@ export class RestaurantView {
     const [hx, hy, hz] = CHILLER_DRAWER.half;
     const front = MeshBuilder.CreateBox("drawer_front", { width: hx * 2, height: hy * 2 + 0.06, depth: 0.03 }, this.scene);
     front.parent = root;
-    front.position.set(0, 0, 0);
     front.material = m.forBox("stainless");
     setPick(front, { type: "drawer" });
     const handle = MeshBuilder.CreateCylinder("drawer_handle", { diameter: 0.02, height: hx * 1.4, tessellation: 10 }, this.scene);
@@ -281,39 +335,49 @@ export class RestaurantView {
     handle.position.set(0, 0.04, -0.03);
     handle.material = m.solid("handle", [0.7, 0.7, 0.72], 0.25, 1);
     setPick(handle, { type: "drawer" });
-    const tub = MeshBuilder.CreateBox("drawer_tub", { width: hx * 2 - 0.04, height: hy * 2 - 0.02, depth: hz * 2 }, this.scene);
+    // Tub sits low so the patties on top are visible across the whole open drawer.
+    const tub = MeshBuilder.CreateBox("drawer_tub", { width: hx * 2 - 0.04, height: 0.2, depth: hz * 2 }, this.scene);
     tub.parent = root;
-    tub.position.set(0, -0.01, hz + 0.015);
+    tub.position.set(0, -0.06, hz + 0.015);
     tub.material = m.solid("tub", [0.75, 0.76, 0.78], 0.3, 0.35);
     tub.isPickable = false;
-    const disp = DISPENSERS.find((d) => d.kind === "patty")!;
-    const patties = MeshBuilder.CreateBox("drawer_patties", { width: hx * 2 - 0.1, height: 0.04, depth: hz * 2 - 0.08 }, this.scene);
-    patties.parent = root;
-    patties.position.set(0, hy - 0.04, hz + 0.015);
-    patties.material = m.solid("raw_pile", FOOD_BIN_COLORS.patty!, 0.6);
-    setPick(patties, { type: "dispenser", id: disp.id, kind: "patty" });
+    // Two compartments: beef on the left, veggie on the right (matching the dispensers).
+    for (const d of DISPENSERS.filter((x) => x.requiresDrawer !== undefined)) {
+      const pile = MeshBuilder.CreateBox(`drawer_${d.kind}`, { width: d.half[0] * 2 - 0.04, height: 0.03, depth: hz * 2 - 0.06 }, this.scene);
+      pile.parent = root;
+      pile.position.set(d.center[0] - CHILLER_DRAWER.handle[0], 0.055, hz + 0.015);
+      const mat = m.solid(`pile_${d.kind}`, d.kind === "patty" ? [0.92, 0.5, 0.52] : [0.7, 0.74, 0.48], 0.55);
+      if (!mat.albedoTexture) mat.albedoTexture = foodTexture(this.scene, d.kind === "patty" ? "meat" : "veggie", 128, 3);
+      pile.material = mat;
+      setPick(pile, { type: "dispenser", id: d.id, kind: d.kind });
+    }
     root.position.set(CHILLER_DRAWER.handle[0], CHILLER_DRAWER.handle[1], CHILLER_DRAWER.handle[2]);
     return root;
   }
 
   private buildBins(m: MaterialLibrary): void {
     const rims: Mesh[] = [];
-    const binDefs = DISPENSERS.filter((d) => d.kind !== "patty" && d.kind !== "tray");
+    const binDefs = DISPENSERS.filter((d) => d.requiresDrawer === undefined && d.kind !== "tray");
     for (const d of DISPENSERS) {
-      if (d.kind === "patty") continue;
+      if (d.requiresDrawer !== undefined) continue;
       if (d.kind === "tray") {
-        const stack = MeshBuilder.CreateBox(`tray_stack`, { width: 0.4, height: 0.08, depth: 0.3 }, this.scene);
-        stack.position.set(d.center[0], d.center[1], d.center[2]);
-        stack.material = m.solid("tray_red", [0.62, 0.08, 0.06], 0.45);
-        setPick(stack, { type: "dispenser", id: d.id, kind: "tray" });
+        const stack: Mesh[] = [];
+        for (let i = 0; i < 6; i++) {
+          const t = MeshBuilder.CreateBox(`tray_stack_${i}`, { width: 0.4, height: 0.012, depth: 0.3 }, this.scene);
+          t.position.set(d.center[0] + (i % 2) * 0.004, d.center[1] - 0.03 + i * 0.013, d.center[2]);
+          t.rotation.y = (i % 3) * 0.01;
+          stack.push(t);
+        }
+        const merged = mergeGroup("tray_stack", stack, { type: "dispenser", id: d.id, kind: "tray" })!;
+        merged.material = m.solid("tray_red", [0.66, 0.07, 0.05], 0.38);
         continue;
       }
+      // Ingredient bins: a textured fill of the actual ingredient inside a hollow steel rim.
       const bin = MeshBuilder.CreateBox(`bin_${d.id}`, { width: d.half[0] * 2 - 0.02, height: 0.012, depth: d.half[2] * 2 - 0.02 }, this.scene);
       bin.position.set(d.center[0], d.center[1] + 0.012, d.center[2]);
-      bin.material = m.solid(`bin_${d.kind}`, FOOD_BIN_COLORS[d.kind] ?? [0.5, 0.5, 0.5], d.kind === "cheese" ? 0.5 : 0.65);
+      bin.material = this.binMaterial(m, d.kind);
       bin.receiveShadows = true;
       setPick(bin, { type: "dispenser", id: d.id, kind: d.kind });
-      // Hollow rim frame so the ingredients inside stay visible.
       const [hx, , hz] = d.half;
       for (const [w, dd, ox, oz] of [
         [hx * 2, 0.012, 0, hz - 0.006],
@@ -328,39 +392,72 @@ export class RestaurantView {
     }
     const rimMerged = mergeGroup("bin_rims", rims, null);
     if (rimMerged) rimMerged.material = m.solid("bin_rim", [0.7, 0.71, 0.73], 0.3, 0.9);
-    // One label strip for the whole bin row (one texture, one draw call).
-    const first = binDefs[0]!;
-    const last = binDefs[binDefs.length - 1]!;
-    const minX = first.center[0] - first.half[0];
-    const maxX = last.center[0] + last.half[0];
-    const strip = MeshBuilder.CreatePlane("bin_labels", { width: maxX - minX, height: 0.05 }, this.scene);
-    strip.position.set((minX + maxX) / 2, first.center[1] + 0.06, first.center[2] - first.half[2] - 0.004);
-    const texW = 1024;
-    const tex = m.signTexture("bin_labels_tex", texW, 48, (ctx, w, h) => {
-      ctx.fillStyle = "#f4efe2";
-      ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = "#2b2420";
-      ctx.font = "bold 22px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      for (const d of binDefs) {
-        const cx = ((d.center[0] - minX) / (maxX - minX)) * w;
-        ctx.fillText(BIN_LABELS[d.kind] ?? ITEMS[d.kind].label.toUpperCase(), cx, h / 2 + 1);
+    // One label strip per bin row (one texture, one draw call each).
+    const rows = new Map<number, typeof binDefs>();
+    for (const d of binDefs) rows.set(d.center[2], [...(rows.get(d.center[2]) ?? []), d]);
+    for (const [z, row] of rows) {
+      const minX = Math.min(...row.map((d) => d.center[0] - d.half[0]));
+      const maxX = Math.max(...row.map((d) => d.center[0] + d.half[0]));
+      const front = z - row[0]!.half[2] - 0.004;
+      const strip = MeshBuilder.CreatePlane(`bin_labels_${z}`, { width: maxX - minX, height: 0.04 }, this.scene);
+      strip.position.set((minX + maxX) / 2, row[0]!.center[1] + 0.05, front);
+      const labelMaterial = (suffix: string, mirrored: boolean) => {
+        const tex = m.signTexture(`bin_labels_tex_${z}${suffix}`, 1024, 40, (ctx, w, h) => {
+          ctx.fillStyle = "#f4efe2";
+          ctx.fillRect(0, 0, w, h);
+          ctx.fillStyle = "#2b2420";
+          ctx.font = `bold ${z > 4 ? 22 : 18}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          for (const d of row) {
+            const t = (d.center[0] - minX) / (maxX - minX);
+            ctx.fillText(BIN_LABELS[d.kind] ?? ITEMS[d.kind].label.toUpperCase(), (mirrored ? 1 - t : t) * w, h / 2 + 1);
+          }
+        });
+        const lm = new PBRMaterial(`bin_labels_mat_${z}${suffix}`, this.scene);
+        lm.albedoTexture = tex;
+        lm.emissiveTexture = tex;
+        lm.emissiveColor = new Color3(0.3, 0.3, 0.3);
+        lm.roughness = 0.8;
+        lm.metallic = 0;
+        return lm;
+      };
+      strip.material = labelMaterial("", false);
+      strip.isPickable = false;
+      if (z < 4) {
+        // The cold rail is worked from both sides of the island: label the back edge too.
+        const back = strip.clone(`bin_labels_back_${z}`);
+        back.position.z = z + row[0]!.half[2] + 0.004;
+        back.rotation.y = Math.PI;
+        back.material = labelMaterial("_back", true);
       }
-    });
-    const lm = new PBRMaterial("bin_labels_mat", this.scene);
-    lm.albedoTexture = tex;
-    lm.emissiveTexture = tex;
-    lm.emissiveColor = new Color3(0.3, 0.3, 0.3);
-    lm.roughness = 0.8;
-    lm.metallic = 0;
-    strip.material = lm;
-    strip.isPickable = false;
+    }
     // Trash opening marker.
     const opening = MeshBuilder.CreateCylinder("trash_opening", { diameter: 0.36, height: 0.01, tessellation: 24 }, this.scene);
     opening.position.set((TRASH_ZONE.minX + TRASH_ZONE.maxX) / 2, 0.805, (TRASH_ZONE.minZ + TRASH_ZONE.maxZ) / 2);
     opening.material = this.materials.solid("trash_hole", [0.02, 0.02, 0.02], 0.9);
     setPick(opening, { type: "trash" });
+  }
+
+  private binMaterial(m: MaterialLibrary, kind: ItemKind): PBRMaterial {
+    const mat = m.solid(`bin_${kind}`, FOOD_BIN_COLORS[kind] ?? [0.5, 0.5, 0.5], kind === "cheese" || kind === "swiss" ? 0.5 : 0.6);
+    const tex: Partial<Record<ItemKind, [string, number]>> = {
+      lettuce: ["lettuce", 3],
+      tomato: ["tomato", 4],
+      pickle: ["pickle", 4],
+      jalapeno: ["jalapeno", 5],
+      bacon: ["bacon", 2],
+      swiss: ["swiss", 2],
+      bun_bottom: ["crumb", 2],
+      bun_top: ["crust", 2],
+    };
+    const t = tex[kind];
+    if (t && !mat.albedoTexture) {
+      mat.albedoTexture = foodTexture(this.scene, t[0], 128, t[1]);
+      mat.albedoColor = new Color3(1, 1, 1);
+      if (kind === "bun_bottom" || kind === "bun_top") mat.albedoColor = new Color3(0.85, 0.6, 0.32);
+    }
+    return mat;
   }
 
   private buildSwitch(m: MaterialLibrary): Mesh {
@@ -420,6 +517,7 @@ export class RestaurantView {
     mat.metallic = 0;
     sign.material = mat;
     sign.isPickable = false;
+    this.glowMeshes.push(sign);
     return mat;
   }
 
@@ -443,10 +541,10 @@ export class RestaurantView {
   }
 
   private buildMenuBoard(m: MaterialLibrary): DynamicTexture {
-    const board = MeshBuilder.CreatePlane("menu_board", { width: 2.4, height: 0.9 }, this.scene);
+    const board = MeshBuilder.CreatePlane("menu_board", { width: 2.6, height: 1.1 }, this.scene);
     board.position.set(-3.2, 2.3, 0.36);
     board.rotation.y = Math.PI;
-    const tex = m.signTexture("menu_tex", 1024, 384, (ctx, w, h) => ctx.clearRect(0, 0, w, h));
+    const tex = m.signTexture("menu_tex", 1024, 434, (ctx, w, h) => ctx.clearRect(0, 0, w, h));
     const mat = new PBRMaterial("menu_mat", this.scene);
     mat.albedoTexture = tex;
     mat.emissiveTexture = tex;
@@ -500,12 +598,16 @@ export class RestaurantView {
     const shadeMesh = mergeGroup("shades", shades, null);
     if (shadeMesh) shadeMesh.material = m.solid("shade", [0.1, 0.25, 0.22], 0.4, 0.3);
     const bulbMesh = mergeGroup("bulbs", bulbs, null);
-    if (bulbMesh) bulbMesh.material = m.solid("bulb", [1, 0.9, 0.7], 0.2, 0, [1, 0.78, 0.5]);
+    if (bulbMesh) {
+      bulbMesh.material = m.solid("bulb", [1, 0.9, 0.7], 0.2, 0, [1, 0.78, 0.5]);
+      this.glowMeshes.push(bulbMesh);
+    }
     // Heat-lamp glow over the pickup shelf.
     const lamp = MeshBuilder.CreateBox("heat_lamp_glow", { width: 2.0, height: 0.01, depth: 0.3 }, this.scene);
     lamp.position.set(-0.4, 1.645, 0);
     lamp.material = m.solid("heat_glow", [1, 0.5, 0.2], 0.5, 0, [0.9, 0.35, 0.1]);
     lamp.isPickable = false;
+    this.glowMeshes.push(lamp);
     // Register screen.
     const screen = MeshBuilder.CreatePlane("register_screen", { width: 0.3, height: 0.18 }, this.scene);
     screen.position.set(-3.5, 1.35, 0.1);
@@ -576,7 +678,8 @@ export class RestaurantView {
       knob.rotation.z = -g.knob * Math.PI * 1.5;
       const heat = Math.max(0, Math.min(1, (g.temp - 60) / 190));
       this.knobLamps[i]!.emissiveColor.set(g.knob > 0.02 ? 1 : 0.02, g.knob > 0.02 ? 0.45 : 0.02, 0.02);
-      this.zoneGlow[i]!.emissiveColor.set(heat * 0.12, heat * 0.03, 0);
+      // Barely-there warmth on a hot plate; heat is read from sound, lamps and smoke, not glow.
+      this.zoneGlow[i]!.emissiveColor.set(heat * 0.035, heat * 0.008, 0);
     });
     this.drawer.position.z = CHILLER_DRAWER.handle[2] - state.drawer * CHILLER_DRAWER.travel;
     this.lever.rotation.x = state.shiftSwitch ? -0.5 : 0.5;
@@ -625,27 +728,36 @@ export class RestaurantView {
   private drawBoard(name: string): void {
     const ctx = this.boardTex.getContext() as unknown as CanvasRenderingContext2D;
     const w = 1024;
-    const h = 384;
+    const h = 434;
     ctx.fillStyle = "#151312";
     ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "#5a4630";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 6, w - 12, h - 12);
     ctx.fillStyle = "#f6d37a";
-    ctx.font = "bold 54px Georgia, serif";
+    ctx.font = "bold 46px Georgia, serif";
     ctx.textAlign = "center";
-    ctx.fillText(name || "After Hours Burger", w / 2, 70);
-    ctx.textAlign = "left";
-    ctx.font = "36px Georgia, serif";
-    let y = 150;
-    for (const r of Object.values(RECIPES)) {
-      ctx.fillStyle = r.enabled ? "#f1ece2" : "#6f6760";
-      ctx.fillText(r.label + (r.enabled ? "" : "  (soon)"), 60, y);
-      ctx.textAlign = "right";
-      ctx.fillText(formatCents(r.priceCents), w - 60, y);
+    ctx.fillText(name || "After Hours Burger", w / 2, 58);
+    const recipes = Object.values(RECIPES).filter((r) => r.enabled);
+    const perCol = Math.ceil(recipes.length / 2);
+    ctx.font = "25px Georgia, serif";
+    recipes.forEach((r, i) => {
+      const col = Math.floor(i / perCol);
+      const row = i % perCol;
+      const x0 = 40 + col * (w / 2);
+      const y = 106 + row * 40;
       ctx.textAlign = "left";
-      y += 64;
-    }
+      ctx.fillStyle = r.tier === 1 ? "#f1ece2" : r.tier === 2 ? "#e8d9bd" : "#d9c3a0";
+      ctx.fillText(r.label, x0, y);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "#f6d37a";
+      ctx.fillText(formatCents(r.priceCents), x0 + w / 2 - 80, y);
+    });
+    ctx.textAlign = "center";
     ctx.fillStyle = "#9a8f84";
-    ctx.font = "26px Georgia, serif";
-    ctx.fillText("Fries & soft drinks coming soon", 60, h - 30);
+    ctx.font = "20px Georgia, serif";
+    ctx.fillText("Ask your cook about today's modifiers", w / 2, h - 20);
     this.boardTex.update(true);
   }
+
 }

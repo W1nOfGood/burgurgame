@@ -11,6 +11,8 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Rendering/outlineRenderer";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
+import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
+import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import {
   DISPENSERS,
   GRILL_ZONES,
@@ -20,6 +22,8 @@ import {
   NET,
   PLAYER,
   RECIPES,
+  isPatty,
+  isSauceBottle,
   type ItemKind,
   type ModifierId,
   type RecipeId,
@@ -55,6 +59,7 @@ import { TouchControls } from "./touchControls.js";
 export interface GameHooks {
   openMenu(): void;
   openPing(): void;
+  openRecipes(): void;
   leave(reason: string, code: number): void;
 }
 
@@ -70,6 +75,15 @@ type Capture =
   | { type: "drawer"; value: number }
   | { type: "squeeze"; target: string }
   | null;
+
+/** Short build reminder used only when the player turns on recipe hints. */
+export function recipeHint(id: RecipeId): string {
+  const r = RECIPES[id];
+  const names: Partial<Record<ItemKind, string>> = { veggie_patty: "veggie", bun_bottom: "", bun_top: "", jalapeno: "jalapeño" };
+  const layers = r.layers.map((k) => (k in names ? names[k] : k) as string).filter(Boolean);
+  const grilled = (r.grilled ?? []).map((g) => `grilled ${g}`);
+  return `${layers.join(" · ")}${grilled.length ? ` (${grilled.join(", ")})` : ""} | ${r.sauces.join(" + ")}`;
+}
 
 const TMP_POSE: Pose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
 
@@ -173,6 +187,8 @@ export class Game {
 
     this.restaurant = new RestaurantView(scene, settings.graphics);
     this.hands = new FirstPersonHands(scene, this.camera, this.restaurant.materials);
+    this.setupPostProcessing(settings);
+    void this.restaurant.enableReflections(settings.graphics);
 
     const me = session.state.players.get(session.sessionId);
     this.local = new LocalPlayer(R, { x: me?.x ?? 0, y: me?.y ?? 0, z: me?.z ?? 3 });
@@ -259,6 +275,34 @@ export class Game {
     this.camera.fov = (s.fov * Math.PI) / 180;
     this.ticketsVisible = s.showTicketOverlay;
     this.applyRenderScale();
+  }
+
+  /**
+   * Restrained post-processing per preset: anti-aliasing everywhere, gentle bloom and vignette
+   * on desktop presets, sharpening on high. Motion blur is never enabled by default.
+   */
+  private setupPostProcessing(settings: Settings): void {
+    const preset = settings.graphics;
+    if (preset === "low") return;
+    const hdr = preset !== "tablet";
+    const p = new DefaultRenderingPipeline("post", hdr, this.scene, [this.camera]);
+    p.fxaaEnabled = true;
+    p.samples = preset === "high" ? 4 : 1;
+    p.bloomEnabled = (preset === "medium" || preset === "high") && !settings.reducedEffects;
+    p.bloomThreshold = 0.85;
+    p.bloomWeight = 0.18;
+    p.bloomKernel = 48;
+    p.bloomScale = 0.5;
+    p.imageProcessingEnabled = true;
+    p.imageProcessing.toneMappingEnabled = true;
+    p.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+    p.imageProcessing.exposure = 1.25;
+    p.imageProcessing.contrast = 1.12;
+    p.imageProcessing.vignetteEnabled = preset !== "tablet";
+    p.imageProcessing.vignetteWeight = 1.1;
+    p.imageProcessing.vignetteColor = new Color4(0.08, 0.03, 0.02, 0);
+    p.sharpenEnabled = preset === "high";
+    p.sharpen.edgeAmount = 0.18;
   }
 
   private applyRenderScale(): void {
@@ -618,6 +662,8 @@ export class Game {
         label: RECIPES[o.recipe as RecipeId]?.label ?? o.recipe,
         mods: [...o.modifiers].map((mm) => MODIFIERS[mm as ModifierId]?.label ?? mm),
         wait: state.shiftTime - o.createdAt,
+        // Off by default: cooks are meant to learn the builds.
+        hint: this.settings.showRecipeHints ? recipeHint(o.recipe as RecipeId) : undefined,
       }));
     this.ui.setTickets(this.ticketsVisible, orders);
     const locked = this.input.pointerLocked || this.input.lastPointer === "touch";
@@ -725,7 +771,7 @@ export class Game {
     if (!t) return null;
     const moving = kind === "spatula" ? this.spatulaLoadKind() : null;
     const placeKind = moving ?? kind;
-    if (kind === "sauce_bottle" && t.pick.type === "item") return null;
+    if (isSauceBottle(kind) && t.pick.type === "item") return null;
     if (kind === "spatula" && !moving && t.pick.type === "item") return null;
     if (t.pick.type === "item") {
       const st = this.session.state.items.get(t.pick.id);
@@ -770,11 +816,12 @@ export class Game {
       if (load) return t && place?.valid ? `${click}: put ${ITEMS[load].label.toLowerCase()} down · ${touch ? "Swipe up/Use" : "E"}: flip` : `${touch ? "Swipe up/Use" : "E"}: flip`;
       if (t?.pick.type === "item") {
         const it = st.items.get(t.pick.id);
-        if (it?.kind === "patty") return `${click}: slide under · ${touch ? "Use" : "E"}: quick flip`;
-        if (it?.kind === "bun_bottom" || it?.kind === "bun_top") return `${click}: slide under`;
+        const k = it?.kind as ItemKind | undefined;
+        if (k && (isPatty(k) || k === "bacon")) return `${click}: slide under · ${touch ? "Use" : "E"}: quick flip`;
+        if (k && ITEMS.spatula.accepts.includes(k)) return `${click}: slide under`;
       }
     }
-    if (kind === "sauce_bottle" && t?.pick.type === "item") return touch ? "Press and hold: squeeze sauce" : "Hold click: squeeze sauce";
+    if (kind && isSauceBottle(kind) && t?.pick.type === "item") return `${touch ? "Press and hold" : "Hold click"}: squeeze ${ITEMS[kind].label.toLowerCase()}`;
     if (kind && t?.pick.type === "player") return `${touch ? "Use" : "E"}: hand over`;
     if (kind && place) {
       if (!place.valid) return place.trash ? "Can't bin that" : "Can't put that there";
@@ -861,7 +908,7 @@ export class Game {
       this.sfx("drawer");
       return true;
     }
-    if (heldKind === "sauce_bottle" && t?.pick.type === "item") {
+    if (heldKind && isSauceBottle(heldKind) && t?.pick.type === "item") {
       this.capture = { type: "squeeze", target: t.pick.id };
       this.controlSendTimer = 0;
       this.sfx("squeeze");
@@ -905,7 +952,7 @@ export class Game {
     if (heldKind) {
       if (heldKind === "spatula" && !this.spatulaLoadKind() && t?.pick.type === "item") {
         const it = st.items.get(t.pick.id);
-        if (it && (it.kind === "patty" || it.kind === "bun_bottom" || it.kind === "bun_top")) {
+        if (it && ITEMS.spatula.accepts.includes(it.kind as ItemKind)) {
           const rootId = it.root || t.pick.id;
           void this.run(MSG.spatula, { action: "slide", item: rootId, rev: st.items.get(rootId)?.rev ?? 0 }).then((r) => r.ok && this.sfx("grab"));
           return;
@@ -1073,7 +1120,8 @@ export class Game {
           if (t?.pick.type === "item") {
             const it = st.items.get(t.pick.id);
             const rootId = it?.root || t.pick.id;
-            if (st.items.get(rootId)?.kind === "patty") {
+            const rk = st.items.get(rootId)?.kind as ItemKind | undefined;
+            if (rk && (isPatty(rk) || rk === "bacon")) {
               void this.run(MSG.spatula, { action: "assistFlip", item: rootId, rev: st.items.get(rootId)?.rev ?? 0 }).then((r) => r.ok && this.sfx("flip"));
               return;
             }
@@ -1094,6 +1142,9 @@ export class Game {
         return;
       case "ping":
         this.hooks.openPing();
+        return;
+      case "recipes":
+        this.hooks.openRecipes();
         return;
       case "tickets":
         this.ticketsVisible = !this.ticketsVisible;

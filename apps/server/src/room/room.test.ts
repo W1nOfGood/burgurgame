@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { DISPENSERS } from "@ahb/data";
 import { PROTOCOL_VERSION, type ServedMessage, type WelcomeMessage } from "@ahb/protocol";
 import { ROOM_NAME } from "../app.js";
 import { MemoryStore } from "../store/memory.js";
@@ -56,6 +57,13 @@ function rev(p: TestPlayer, id: string): number {
 
 function at(p: TestPlayer, x: number, z: number, yaw = 0, pitch = 0.6): void {
   kitchenOf(p).debugPlacePlayer(p.room.sessionId, { x, y: 0, z }, yaw, pitch);
+}
+
+/** Stands in front of a dispenser bin, facing it, from whichever side of its counter is open. */
+function atBin(p: TestPlayer, id: string): void {
+  const d = DISPENSERS.find((x) => x.id === id)!;
+  if (d.center[2] > 4) at(p, d.center[0], 3.7, 0, 0.7);
+  else at(p, d.center[0], 3.2, Math.PI, 0.7);
 }
 
 function advance(p: TestPlayer, seconds: number): void {
@@ -210,7 +218,7 @@ describe("shared interactions", () => {
     expect(await send(a, "setDown")).toMatchObject({ ok: true });
 
     // Cheese melts on the hot patty.
-    at(a, -3.0, 3.7, 0, 0.7);
+    atBin(a, "bin_cheese");
     expect(await send(a, "grab", { dispenser: "bin_cheese" })).toMatchObject({ ok: true });
     const cheese = room.state.players.get(a.room.sessionId)!.held;
     at(a, 0, 3.6, 0, 0.7);
@@ -222,7 +230,7 @@ describe("shared interactions", () => {
     // Build on a tray.
     const tray = itemsOfKind(a, "tray")[0]!;
     const trayPos = k.debugItem(tray)!.pos;
-    at(a, -3.8, 3.7, 0, 0.7);
+    atBin(a, "bin_bun_bottom");
     expect(await send(a, "grab", { dispenser: "bin_bun_bottom" })).toMatchObject({ ok: true });
     at(a, trayPos.x, 1.3, 0, 0.7);
     expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });
@@ -230,20 +238,16 @@ describe("shared interactions", () => {
     expect(await send(a, "grab", { item: patty, rev: rev(a, patty) })).toMatchObject({ ok: true });
     at(a, trayPos.x, 1.3, 0, 0.7);
     expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });
-    for (const [bin, x] of [
-      ["bin_lettuce", -2.6],
-      ["bin_tomato", -2.18],
-      ["bin_pickle", -1.34],
-    ] as const) {
-      at(a, x, 3.7, 0, 0.7);
+    for (const bin of ["bin_lettuce", "bin_tomato", "bin_pickle"]) {
+      atBin(a, bin);
       expect(await send(a, "grab", { dispenser: bin })).toMatchObject({ ok: true });
       at(a, trayPos.x, 1.3, 0, 0.7);
       expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });
     }
 
-    // Sauce.
+    // House sauce (the classic's sauce).
     const bottle = itemsOfKind(a, "sauce_bottle")[0]!;
-    at(a, 0.7, 1.3, 0, 0.7);
+    at(a, 0.9, 1.3, 0, 0.7);
     expect(await send(a, "grab", { item: bottle, rev: rev(a, bottle) })).toMatchObject({ ok: true });
     at(a, trayPos.x, 1.3, 0, 0.7);
     for (let i = 0; i < 8; i++) {
@@ -254,7 +258,7 @@ describe("shared interactions", () => {
     await sleep(50);
     expect(await send(a, "setDown")).toMatchObject({ ok: true });
 
-    at(a, -3.45, 3.7, 0, 0.7);
+    atBin(a, "bin_bun_top");
     expect(await send(a, "grab", { dispenser: "bin_bun_top" })).toMatchObject({ ok: true });
     at(a, trayPos.x, 1.3, 0, 0.7);
     expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });

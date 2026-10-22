@@ -118,7 +118,7 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
   await expect.poll(() => players(desk)).toBe(2);
 
   // Pull the drawer open by dragging its handle (pointer lock acquired by the first click).
-  await aimAt(desk, { x: -1.6, z: 3.15 }, { x: -1.6, y: 0.62, z: 4.22 });
+  await aimAt(desk, { x: -1.8, z: 3.15 }, { x: -1.6, y: 0.62, z: 4.22 });
   const c = await center(desk);
   await desk.mouse.click(c.x, c.y);
   await desk.waitForTimeout(300);
@@ -130,10 +130,12 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
   }
   await desk.mouse.up();
   await expect.poll(() => desk.evaluate(() => window.__ahb.session.state.drawer as number)).toBeGreaterThan(0.6);
+  // Let the drawer finish sliding before aiming into it.
+  await desk.waitForTimeout(800);
 
-  // Take a patty from the exposed part of the open drawer.
+  // Take a beef patty (left compartment) from the exposed part of the open drawer.
   const open = await desk.evaluate(() => window.__ahb.session.state.drawer as number);
-  await aimAt(desk, { x: -1.6, z: 3.15 }, { x: -1.6, y: 0.72, z: 4.23 - open * 0.42 + 0.14 });
+  await aimAt(desk, { x: -1.8, z: 3.15 }, { x: -1.8, y: 0.69, z: 4.23 - open * 0.42 + 0.2 });
   // Under pointer lock, clicks aim with the crosshair; moving the mouse would turn the camera.
   await desk.mouse.down();
   await desk.mouse.up();
@@ -142,8 +144,8 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
   expect(await itemKind(desk, patty)).toBe("patty");
 
   // Face the tablet player and press E to offer the patty.
-  await aimAt(tab, { x: -0.8, z: 3.15 }, { x: -1.6, y: 1.4, z: 3.15 });
-  await aimAt(desk, { x: -1.6, z: 3.15 }, { x: -0.8, y: 1.2, z: 3.15 });
+  await aimAt(tab, { x: -1.0, z: 3.15 }, { x: -1.8, y: 1.4, z: 3.15 });
+  await aimAt(desk, { x: -1.8, z: 3.15 }, { x: -1.0, y: 1.2, z: 3.15 });
   await desk.keyboard.press("KeyE");
   await expect.poll(() => desk.evaluate((id) => window.__ahb.session.state.items.get(id)?.offered as boolean, patty)).toBe(true);
 
@@ -152,7 +154,7 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
     const it = window.__ahb.session.state.items.get(id);
     return { x: it.x as number, y: it.y as number, z: it.z as number };
   }, patty);
-  await aimAt(tab, { x: -0.8, z: 3.15 }, pos);
+  await aimAt(tab, { x: -1.0, z: 3.15 }, pos);
   await tapCenter(tab);
   await expect.poll(() => held(tab)).toBe(patty);
   await expect.poll(() => held(desk)).toBe("");

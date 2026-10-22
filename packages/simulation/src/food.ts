@@ -26,6 +26,8 @@ export interface FoodState {
   down: 0 | 1;
   /** Sauce units applied on this layer. */
   sauce: number;
+  /** Which sauces were applied (SAUCE_BIT flags). */
+  sauceMask: number;
   /** Touched the floor or otherwise contaminated. */
   dirty: boolean;
   /** Seconds since the item left stock. */
@@ -38,12 +40,13 @@ export function createFoodState(kind: ItemKind): FoodState {
     cookB: 0,
     inner: 0,
     burn: 0,
-    temp: kind === "patty" || kind === "cheese" ? COOKING.fridgeTemp : COOKING.ambientTemp,
+    temp: kind === "patty" || kind === "veggie_patty" || kind === "cheese" || kind === "swiss" || kind === "bacon" || kind === "egg" ? COOKING.fridgeTemp : COOKING.ambientTemp,
     moisture: 1,
     melt: 0,
     toast: 0,
     down: 0,
     sauce: 0,
+    sauceMask: 0,
     dirty: false,
     age: 0,
   };
@@ -78,9 +81,9 @@ export function stepFood(kind: ItemKind, s: FoodState, env: HeatEnv, dt: number)
   s.age += dt;
   const contact = env.contactTemp;
 
-  if (kind === "patty") {
+  if (kind === "patty" || kind === "veggie_patty") {
     if (contact !== null) {
-      const f = heatFactor(contact);
+      const f = heatFactor(contact) * (COOKING.rateFactor[kind] ?? 1);
       const side = COOKING.sideRate * f * dt;
       const upper = side * COOKING.upperSideFraction;
       if (s.down === 0) {
@@ -106,7 +109,7 @@ export function stepFood(kind: ItemKind, s: FoodState, env: HeatEnv, dt: number)
     return s;
   }
 
-  if (kind === "cheese") {
+  if (kind === "cheese" || kind === "swiss") {
     if (contact !== null) {
       // Cheese straight on the grill melts fast and scorches.
       const f = heatFactor(contact);
@@ -136,9 +139,9 @@ export function stepFood(kind: ItemKind, s: FoodState, env: HeatEnv, dt: number)
     return s;
   }
 
-  // Vegetables and other food follow their surroundings and wilt on the grill.
+  // Grill toppings (bacon, egg, mushrooms, onions) cook as one value; salad items wilt.
   if (contact !== null) {
-    const f = heatFactor(contact);
+    const f = heatFactor(contact) * (COOKING.rateFactor[kind] ?? 1);
     s.cookA = Math.min(1.6, s.cookA + COOKING.sideRate * f * dt);
     if (s.cookA > 1) s.burn = clamp01(s.burn + (s.cookA - 1) * COOKING.burnRate * dt);
     s.temp = approach(s.temp, contact * COOKING.contactTempFraction, COOKING.heatResponse, dt);
@@ -152,7 +155,7 @@ export function stepFood(kind: ItemKind, s: FoodState, env: HeatEnv, dt: number)
 export function sizzleLevel(kind: ItemKind, s: FoodState, contactTemp: number | null): number {
   if (contactTemp === null) return 0;
   const f = heatFactor(contactTemp);
-  if (kind === "patty") return clamp01(f * (0.35 + 0.65 * s.moisture) + s.burn * 0.3);
+  if (kind === "patty" || kind === "veggie_patty" || kind === "bacon") return clamp01(f * (0.35 + 0.65 * s.moisture) + s.burn * 0.3);
   return clamp01(f * 0.4);
 }
 

@@ -127,12 +127,12 @@ const SPECS: Record<MaterialId, Spec> = {
   wall_tile: { albedo: [1, 1, 1], metallic: 0, roughness: 0.25, tile: 1.2 },
   // Without a baked reflection environment (Stage 3) high metalness renders black, so the
   // placeholder steel uses moderate metalness and a bright albedo.
-  stainless: { albedo: [0.82, 0.83, 0.85], metallic: 0.35, roughness: 0.38, tile: 1 },
-  grill_plate: { albedo: [0.22, 0.21, 0.2], metallic: 0.4, roughness: 0.55 },
+  stainless: { albedo: [0.82, 0.83, 0.85], metallic: 0.85, roughness: 0.34, tile: 1 },
+  grill_plate: { albedo: [0.22, 0.21, 0.2], metallic: 0.7, roughness: 0.55 },
   laminate: { albedo: [1, 1, 1], metallic: 0, roughness: 0.4, tile: 1 },
   timber: { albedo: [1, 1, 1], metallic: 0, roughness: 0.6, tile: 1 },
   glass: { albedo: [0.6, 0.7, 0.75], metallic: 0, roughness: 0.05, alpha: 0.18 },
-  dark_metal: { albedo: [0.16, 0.16, 0.17], metallic: 0.35, roughness: 0.45 },
+  dark_metal: { albedo: [0.16, 0.16, 0.17], metallic: 0.7, roughness: 0.45 },
   ceiling: { albedo: [0.82, 0.8, 0.75], metallic: 0, roughness: 0.9 },
   fridge_white: { albedo: [0.88, 0.89, 0.9], metallic: 0.15, roughness: 0.3 },
   red_vinyl: { albedo: [0.55, 0.06, 0.06], metallic: 0, roughness: 0.45 },
@@ -142,6 +142,7 @@ const SPECS: Record<MaterialId, Spec> = {
 export class MaterialLibrary {
   private readonly scene: Scene;
   private readonly cache = new Map<string, PBRMaterial>();
+  private readonly intendedMetalness = new Map<PBRMaterial, number>();
   private readonly maxLights: number;
 
   constructor(scene: Scene, maxLights: number) {
@@ -173,6 +174,7 @@ export class MaterialLibrary {
     // Placeholder rule until the Stage 3 reflection environment exists: cap metalness so
     // metal props stay readable instead of rendering black.
     mat.metallic = Math.min(spec.metallic, 0.45);
+    this.intendedMetalness.set(mat, spec.metallic);
     mat.roughness = spec.roughness;
     mat.maxSimultaneousLights = this.maxLights;
     if (spec.alpha !== undefined) {
@@ -197,6 +199,11 @@ export class MaterialLibrary {
     if (existing) return existing;
     const mat = this.basic(name, { albedo: [1, 1, 1], roughness, metallic: 0 });
     return mat;
+  }
+
+  /** Once a reflection environment exists, metals can use their real metalness. */
+  restoreMetalness(): void {
+    for (const [mat, metallic] of this.intendedMetalness) mat.metallic = metallic;
   }
 
   signTexture(name: string, width: number, height: number, draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void): DynamicTexture {

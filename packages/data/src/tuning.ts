@@ -121,6 +121,8 @@ export const COOKING = {
   meltRate: 0.12,
   /** Bun toasting per second at heat factor 1. */
   toastRate: 0.06,
+  /** Relative cook speed of other grill items versus a patty side. */
+  rateFactor: { veggie_patty: 1.35, bacon: 1.7, egg: 1.5, mushroom: 1.4, onion: 1.2 } as Record<string, number>,
   /** Above this temperature food counts as warm when served. */
   warmServeTemp: 45,
 } as const;
@@ -137,4 +139,9 @@ export const SHIFT = {
   normalShiftSeconds: 18 * 60,
   /** Seconds an order may wait before patience penalties start. */
   patienceSeconds: 180,
+  /** Shift seconds after which tier 2 / tier 3 recipes start appearing on tickets. */
+  tier2After: { relaxed: 180, normal: 90 },
+  tier3After: { relaxed: 420, normal: 240 },
+  /** Chance a ticket carries a modifier. */
+  modifierChance: 0.35,
 } as const;

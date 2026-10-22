@@ -1,4 +1,4 @@
-import { formatCents } from "@ahb/data";
+import { ITEMS, RECIPES, SAUCE_LABEL, formatCents, type ItemKind } from "@ahb/data";
 import { PING_PRESETS, PING_TEXT, type PingPreset, type ServedMessage, type SummaryMessage } from "@ahb/protocol";
 import { DEFAULT_BINDINGS, defaultSettings, type GraphicsPreset, type Settings } from "../settings.js";
 
@@ -32,6 +32,7 @@ export interface MenuCallbacks {
   settings(): void;
   copyCode(): void;
   ping(): void;
+  recipes(): void;
 }
 
 export class Ui {
@@ -194,6 +195,7 @@ export class Ui {
         <button id="resume" class="btn primary">Back to the kitchen</button>
         <button id="pause" class="btn">${opts.paused ? "Resume countdown" : opts.solo ? "Pause the kitchen" : `Vote to pause ${esc(opts.votes)}`}</button>
         <button id="ping" class="btn">Ping teammates</button>
+        <button id="recipes" class="btn">Recipe book</button>
         <button id="settings" class="btn">Settings</button>
         ${opts.isOwner ? `<button id="export" class="btn">Export save file</button>` : ""}
         <button id="leave" class="btn danger">Leave kitchen</button>
@@ -203,10 +205,47 @@ export class Ui {
     s.querySelector("#resume")!.addEventListener("click", cb.resume);
     s.querySelector("#pause")!.addEventListener("click", cb.pause);
     s.querySelector("#ping")!.addEventListener("click", cb.ping);
+    s.querySelector("#recipes")!.addEventListener("click", cb.recipes);
     s.querySelector("#settings")!.addEventListener("click", cb.settings);
     s.querySelector("#leave")!.addEventListener("click", cb.leave);
     s.querySelector("#copy")!.addEventListener("click", cb.copyCode);
     s.querySelector("#export")?.addEventListener("click", cb.exportSave);
+    this.show(s);
+  }
+
+  /** The recipe book: the full build of every burger, for learning and lookups. */
+  showRecipeBook(onClose: () => void, unlockedTier = 3): void {
+    const names: Partial<Record<ItemKind, string>> = {
+      bun_bottom: "Bottom bun",
+      bun_top: "Top bun",
+      patty: "Beef patty",
+      veggie_patty: "Veggie patty",
+      cheese: "Cheddar",
+      swiss: "Swiss",
+    };
+    const s = el("section", "screen recipe-book");
+    s.innerHTML = `
+      <h2>Recipe book</h2>
+      <p class="fine">Tickets only show the burger's name. Build bottom to top, in this order, with exactly these sauces. Tiers unlock as the night gets busier.</p>
+      <div class="recipes">${Object.values(RECIPES)
+        .filter((r) => r.enabled)
+        .map(
+          (r) => `<article class="recipe ${r.tier > unlockedTier ? "locked" : ""}">
+            <header><b>${esc(r.label)}</b><span>${formatCents(r.priceCents)} · tier ${r.tier}</span></header>
+            <ol>${[...r.layers]
+              .reverse()
+              .map((k) => `<li>${esc(names[k] ?? ITEMS[k].label)}${r.grilled?.includes(k) ? " <em>(grilled)</em>" : ""}</li>`)
+              .join("")}</ol>
+            <p class="sauces">${r.sauces.map((x) => esc(SAUCE_LABEL[x])).join(" + ")}</p>
+            <p class="fine">${esc(r.blurb)}</p>
+          </article>`,
+        )
+        .join("")}</div>
+      <button class="btn primary" id="close">Back</button>`;
+    s.querySelector("#close")!.addEventListener("click", onClose);
+    s.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") onClose();
+    });
     this.show(s);
   }
 
@@ -252,6 +291,7 @@ export class Ui {
           ${check("simpleInteractions", "Simple interactions (click knobs and drawers to step them)")}
           ${check("showLabels", "Show contextual labels")}
           ${check("showTicketOverlay", "Show ticket overlay")}
+          ${check("showRecipeHints", "Show recipe builds on tickets (learning aid)")}
           ${check("subtitles", "Subtitles for important speech")}
           ${check("reducedEffects", "Reduced sensory effects")}
         </fieldset>
@@ -389,15 +429,15 @@ export class Ui {
     }
   }
 
-  setTickets(visible: boolean, orders: { number: number; label: string; mods: string[]; wait: number }[]): void {
+  setTickets(visible: boolean, orders: { number: number; label: string; mods: string[]; wait: number; hint?: string }[]): void {
     this.tickets.hidden = !visible || orders.length === 0;
-    const key = orders.map((o) => `${o.number}:${Math.floor(o.wait / 5)}`).join("|");
+    const key = orders.map((o) => `${o.number}:${Math.floor(o.wait / 5)}:${o.hint ?? ""}`).join("|");
     if (key === this.lastTicketsKey) return;
     this.lastTicketsKey = key;
     this.tickets.innerHTML = orders
       .map(
         (o) =>
-          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
+          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
       )
       .join("");
   }

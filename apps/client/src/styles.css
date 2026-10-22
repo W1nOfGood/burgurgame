@@ -652,3 +652,64 @@ kbd {
     transition: none;
   }
 }
+
+/* ---------------- Recipe book ---------------- */
+
+.screen.recipe-book {
+  width: min(1100px, 100%);
+}
+
+.recipes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.recipe {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.recipe header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.recipe header span {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.recipe ol {
+  margin: 8px 0;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.recipe em {
+  color: var(--accent);
+  font-style: normal;
+}
+
+.recipe .sauces {
+  margin: 4px 0;
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.recipe.locked {
+  opacity: 0.55;
+}
+
+.ticket i {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  color: #4e463f;
+}

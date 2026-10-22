@@ -87,6 +87,7 @@ async function enter(s: Session, R: Rapier): Promise<void> {
   game = new Game(engine, canvas, s, ui, settings, R, audio, {
     openMenu: openMenu,
     openPing: openPing,
+    openRecipes: () => openRecipes(false),
     leave: (reason, code) => onLeft(reason, code),
   });
   if (debug) {
@@ -198,8 +199,21 @@ function openMenu(): void {
         );
       },
       ping: openPing,
+      recipes: () => openRecipes(true),
     },
   );
+}
+
+function openRecipes(fromMenu: boolean): void {
+  const g = game;
+  if (!g) return;
+  g.setMenuOpen(true);
+  ui.showRecipeBook(() => {
+    if (fromMenu) return openMenu();
+    ui.hideScreen();
+    g.setMenuOpen(false);
+    if (platform() === "desktop") g.input.requestLock();
+  });
 }
 
 function openPing(): void {

@@ -1,11 +1,18 @@
 import {
   COOKING,
+  ITEMS,
   MODIFIERS,
   RECIPES,
+  SAUCE_BIT,
+  SAUCE_KINDS,
+  SAUCE_LABEL,
   SCORING,
+  isCheese,
+  isPatty,
   type ItemKind,
   type ModifierId,
   type RecipeId,
+  type SauceKind,
 } from "@ahb/data";
 import type { FoodState } from "./food.js";
 
@@ -38,17 +45,22 @@ export function expectedLayers(order: OrderSpec): ItemKind[] {
       if (i >= 0) layers.splice(i, 1);
     }
     if (mod.add) {
-      const i = layers.indexOf(mod.add);
-      layers.splice(i >= 0 ? i + 1 : layers.length - 1, 0, mod.add);
+      const anchor = mod.after ? layers.indexOf(mod.after) : -1;
+      layers.splice(anchor >= 0 ? anchor + 1 : layers.length - 1, 0, mod.add);
     }
   }
   return layers;
 }
 
-export function expectedSauce(order: OrderSpec): number {
-  let sauce = RECIPES[order.recipe].sauce;
-  for (const id of order.modifiers) sauce += MODIFIERS[id].extraSauce ?? 0;
-  return sauce;
+export function expectedSauces(order: OrderSpec): SauceKind[] {
+  return [...RECIPES[order.recipe].sauces];
+}
+
+export function expectedSauceAmount(order: OrderSpec): number {
+  if (RECIPES[order.recipe].sauces.length === 0) return 0;
+  let amount: number = SCORING.sauceMin;
+  for (const id of order.modifiers) amount += MODIFIERS[id].extraSauce ?? 0;
+  return amount;
 }
 
 export function orderPrice(order: OrderSpec): number {
@@ -65,14 +77,29 @@ function countKinds(kinds: readonly ItemKind[]): Map<ItemKind, number> {
 
 const LABEL: Partial<Record<ItemKind, string>> = {
   patty: "patty",
+  veggie_patty: "veggie patty",
   bun_bottom: "bottom bun",
   bun_top: "top bun",
   cheese: "cheese",
+  swiss: "Swiss",
   lettuce: "lettuce",
   tomato: "tomato",
   onion: "onions",
   pickle: "pickles",
+  bacon: "bacon",
+  mushroom: "mushrooms",
+  egg: "egg",
+  jalapeno: "jalapeños",
 };
+
+function label(kind: ItemKind): string {
+  return LABEL[kind] ?? ITEMS[kind].label.toLowerCase();
+}
+
+/** A layer's single cook value for grilled toppings. */
+function toppingCook(f: FoodState): number {
+  return Math.max(f.cookA, f.cookB);
+}
 
 /**
  * Scores a served burger against an order. Pure and deterministic so the server, tests, and a
@@ -85,7 +112,7 @@ export function evaluateBurger(layers: readonly ServedLayer[], order: OrderSpec,
     score -= points;
     feedback.push({ weight: points, text });
   };
-
+  const recipe = RECIPES[order.recipe];
   const expected = expectedLayers(order);
   const served = layers.map((l) => l.kind);
 
@@ -102,49 +129,81 @@ export function evaluateBurger(layers: readonly ServedLayer[], order: OrderSpec,
   // Ingredients present vs requested.
   const want = countKinds(expected);
   const have = countKinds(served);
+  let countsMatch = true;
   for (const [kind, n] of want) {
     if (kind === "bun_bottom" || kind === "bun_top") continue;
     const missing = n - (have.get(kind) ?? 0);
-    for (let i = 0; i < missing; i++) deduct(SCORING.missingIngredient, `Missing ${LABEL[kind] ?? kind}`);
+    if (missing !== 0) countsMatch = false;
+    for (let i = 0; i < missing; i++) deduct(SCORING.missingIngredient, `Missing ${label(kind)}`);
   }
   for (const [kind, n] of have) {
     if (kind === "bun_bottom" || kind === "bun_top") continue;
     const extra = n - (want.get(kind) ?? 0);
+    if (extra !== 0) countsMatch = false;
     for (let i = 0; i < extra; i++) {
       const removed = order.modifiers.some((m) => MODIFIERS[m].remove === kind);
-      deduct(SCORING.unwantedIngredient, removed ? `Asked for no ${LABEL[kind] ?? kind}` : `Extra ${LABEL[kind] ?? kind} wasn't ordered`);
+      deduct(SCORING.unwantedIngredient, removed ? `Asked for no ${label(kind)}` : `${capital(label(kind))} doesn't go on a ${recipe.label}`);
     }
+  }
+  // Right ingredients, wrong stacking order: the build has to be learned, not just the list.
+  if (countsMatch) {
+    const fill = (k: readonly ItemKind[]) => k.filter((x) => x !== "bun_bottom" && x !== "bun_top").join(",");
+    if (fill(served) !== fill(expected)) deduct(SCORING.wrongOrder, "Stacked in the wrong order");
   }
 
   // Cooking quality.
+  const grilledRequired = new Set(recipe.grilled ?? []);
   let coldest = Number.POSITIVE_INFINITY;
   layers.forEach((layer, i) => {
     const s = layer.food;
-    if (s.dirty) deduct(SCORING.dirtyFood, `${capital(LABEL[layer.kind] ?? layer.kind)} had been dropped on the floor`);
-    if (layer.kind === "patty") {
+    const k = layer.kind;
+    if (s.dirty) deduct(SCORING.dirtyFood, `${capital(label(k))} had been dropped on the floor`);
+    if (isPatty(k)) {
       coldest = Math.min(coldest, s.temp);
-      if (s.inner < SCORING.undercookedBelow) deduct(SCORING.undercookedPatty, "Patty was undercooked in the middle");
-      else if (s.inner < SCORING.cookedThrough) deduct(Math.round(SCORING.undercookedPatty / 3), "Patty needed a little longer");
-      if (s.burn > SCORING.burntAbove) deduct(SCORING.burntPatty, "Patty was burnt");
+      const name = k === "veggie_patty" ? "Veggie patty" : "Patty";
+      if (s.inner < SCORING.undercookedBelow) deduct(SCORING.undercookedPatty, `${name} was undercooked in the middle`);
+      else if (s.inner < SCORING.cookedThrough) deduct(Math.round(SCORING.undercookedPatty / 3), `${name} needed a little longer`);
+      if (s.burn > SCORING.burntAbove) deduct(SCORING.burntPatty, `${name} was burnt`);
       const pale = Math.min(s.cookA, s.cookB) < SCORING.idealBrowningMin;
-      if (pale && s.burn <= SCORING.burntAbove) deduct(SCORING.paleSurface, "One side of the patty was pale — flip it");
+      if (pale && s.burn <= SCORING.burntAbove) deduct(SCORING.paleSurface, `One side of the ${name.toLowerCase()} was pale — flip it`);
     }
-    if (layer.kind === "cheese") {
-      if (s.melt < SCORING.meltedAbove) deduct(SCORING.cheeseNotMelted, "Cheese wasn't melted");
-      if (layers[i - 1]?.kind !== "patty") deduct(SCORING.cheeseNotOnPatty, "Cheese should sit on the patty");
+    if (isCheese(k)) {
+      const below = layers[i - 1];
+      // Cheese only melts on hot food; a slice tucked under cold veg can stay firm.
+      if (s.melt < SCORING.meltedAbove && below && isPatty(below.kind)) deduct(SCORING.cheeseNotMelted, `${k === "swiss" ? "Swiss" : "Cheese"} wasn't melted`);
     }
-    if (layer.kind === "bun_bottom" || layer.kind === "bun_top") {
+    if (k === "bun_bottom" || k === "bun_top") {
       if (s.toast > SCORING.bunBurntAbove || s.burn > SCORING.burntAbove) deduct(SCORING.bunBurnt, "Bun was burnt");
       else if (s.toast < SCORING.toastedAbove) deduct(SCORING.bunNotToasted, "Bun wasn't toasted");
     }
+    if (k === "bacon" || k === "mushroom" || k === "egg") {
+      const c = toppingCook(s);
+      const text = k === "bacon" ? "Bacon was undercooked" : k === "mushroom" ? "Mushrooms were raw" : "Egg was runny";
+      if (c < SCORING.toppingCooked) deduct(SCORING.undercookedTopping, text);
+      else if (s.burn > SCORING.burntAbove) deduct(SCORING.burntTopping, `${capital(label(k))} ${k === "mushroom" ? "were" : "was"} burnt`);
+    }
+    if (k === "onion" && want.has("onion")) {
+      const grilled = toppingCook(s) > SCORING.onionGrilledAbove;
+      if (grilledRequired.has("onion") && !grilled) deduct(SCORING.onionWrongStyle, "Onions should be grilled");
+      if (!grilledRequired.has("onion") && grilled) deduct(SCORING.onionWrongStyle, "Onions should be raw");
+    }
+    if ((k === "lettuce" || k === "tomato" || k === "pickle" || k === "jalapeno") && toppingCook(s) > 0.3) deduct(SCORING.wilted, `${capital(label(k))} got cooked`);
   });
   if (Number.isFinite(coldest) && coldest < COOKING.warmServeTemp) deduct(SCORING.coldFood, "Burger had gone cold");
 
-  // Sauce.
-  const sauce = layers.reduce((sum, l) => sum + l.food.sauce, 0);
-  const wantSauce = expectedSauce(order);
-  if (wantSauce > 0 && sauce < wantSauce * 0.6) deduct(SCORING.missingSauce, wantSauce > RECIPES[order.recipe].sauce ? "Asked for extra sauce" : "Not enough sauce");
-  if (sauce > SCORING.tooMuchSauceAbove + (wantSauce - RECIPES[order.recipe].sauce)) deduct(SCORING.tooMuchSauce, "Way too much sauce");
+  // Sauces: the right ones, and enough of them.
+  const amount = layers.reduce((sum, l) => sum + l.food.sauce, 0);
+  const mask = layers.reduce((m, l) => m | l.food.sauceMask, 0);
+  const wantSauces = expectedSauces(order);
+  for (const sauce of wantSauces) if ((mask & SAUCE_BIT[sauce]) === 0) deduct(SCORING.missingSauce, `Missing ${SAUCE_LABEL[sauce]}`);
+  for (const sauce of SAUCE_KINDS) {
+    if ((mask & SAUCE_BIT[sauce]) !== 0 && !wantSauces.includes(sauce)) deduct(SCORING.wrongSauce, `Didn't ask for ${SAUCE_LABEL[sauce]}`);
+  }
+  const wantAmount = expectedSauceAmount(order);
+  if (wantAmount > 0 && amount > 0 && amount < wantAmount * 0.6) {
+    deduct(SCORING.notEnoughSauce, order.modifiers.includes("extra_sauce") ? "Asked for extra sauce" : "Not enough sauce");
+  }
+  if (amount > SCORING.tooMuchSauceAbove + (wantAmount - SCORING.sauceMin)) deduct(SCORING.tooMuchSauce, "Way too much sauce");
 
   // Waiting time.
   const over = Math.max(0, waitSeconds - patienceSeconds);
@@ -159,15 +218,11 @@ export function evaluateBurger(layers: readonly ServedLayer[], order: OrderSpec,
   const tipFraction = score > SCORING.tipFromScore ? ((score - SCORING.tipFromScore) / (100 - SCORING.tipFromScore)) * SCORING.maxTipFraction : 0;
   const tip = accepted ? Math.round(price * tipFraction) : 0;
   feedback.sort((a, b) => b.weight - a.weight);
-  const lines = feedback.map((f) => f.text);
+  const lines = [...new Set(feedback.map((f) => f.text))];
   if (lines.length === 0) lines.push("Perfect burger!");
-  return { score, feedback: dedupe(lines), priceCents: price, tipCents: tip, accepted };
+  return { score, feedback: lines, priceCents: price, tipCents: tip, accepted };
 }
 
 function capital(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function dedupe(lines: string[]): string[] {
-  return [...new Set(lines)];
 }

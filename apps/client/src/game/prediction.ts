@@ -50,8 +50,9 @@ export class LocalPlayer {
     const ey = before.y - after.y;
     const ez = before.z - after.z;
     const err = Math.hypot(ex, ey, ez);
-    if (err > 1.5) {
-      // Teleport-sized disagreement (respawn, restore): accept it outright.
+    if (err > 0.5) {
+      // Teleport-sized disagreement (respawn, restore, server placement): accept it outright.
+      // Normal prediction error is millimetres; smoothing half a metre would only lag the view.
       this.offset.x = this.offset.y = this.offset.z = 0;
     } else if (err > 0.0005) {
       this.offset.x += ex;
