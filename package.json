@@ -24,7 +24,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "migrate": "node --conditions=source --import tsx scripts/migrate.ts",
+    "migrate": "tsx --conditions=source apps/server/src/migrate.ts",
     "clean": "rm -rf packages/*/dist apps/*/dist packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo"
   },
   "devDependencies": {

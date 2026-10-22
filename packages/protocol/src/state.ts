@@ -10,29 +10,29 @@ import { schema, t, type SchemaType } from "@colyseus/schema";
 
 export const PlayerState = schema(
   {
-    name: t.string(),
-    color: t.uint8(),
+    name: t.string().default(""),
+    color: t.uint8().default(0),
     /** "desktop" | "touch" */
-    platform: t.string(),
-    x: t.float32(),
-    y: t.float32(),
-    z: t.float32(),
-    vx: t.float32(),
-    vy: t.float32(),
-    vz: t.float32(),
-    yaw: t.float32(),
-    pitch: t.float32(),
-    crouch: t.boolean(),
+    platform: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    vx: t.float32().default(0),
+    vy: t.float32().default(0),
+    vz: t.float32().default(0),
+    yaw: t.float32().default(0),
+    pitch: t.float32().default(0),
+    crouch: t.boolean().default(false),
     /** Last input sample sequence the server has simulated for this player. */
-    ack: t.uint32(),
+    ack: t.uint32().default(0),
     /** Root item id currently held, or "". */
-    held: t.string(),
-    connected: t.boolean(),
-    admin: t.boolean(),
+    held: t.string().default(""),
+    connected: t.boolean().default(false),
+    admin: t.boolean().default(false),
     /** Hold distance of the held item, for remote presentation. */
-    hold: t.float32(),
+    hold: t.float32().default(0),
     /** True while the player is in a menu (presentation only; never pauses co-op). */
-    away: t.boolean(),
+    away: t.boolean().default(false),
   },
   "PlayerState",
 );
@@ -40,43 +40,43 @@ export type PlayerState = SchemaType<typeof PlayerState>;
 
 export const ItemState = schema(
   {
-    kind: t.string(),
-    x: t.float32(),
-    y: t.float32(),
-    z: t.float32(),
-    qx: t.float32(),
-    qy: t.float32(),
-    qz: t.float32(),
+    kind: t.string().default(""),
+    x: t.float32().default(0),
+    y: t.float32().default(0),
+    z: t.float32().default(0),
+    qx: t.float32().default(0),
+    qy: t.float32().default(0),
+    qz: t.float32().default(0),
     qw: t.float32().default(1),
     /** Incremented on every ownership or stacking change; clients echo it on grab. */
-    rev: t.uint32(),
+    rev: t.uint32().default(0),
     /** Session id of the player holding this item (roots only), or "". */
-    holder: t.string(),
+    holder: t.string().default(""),
     /** Id of the item directly beneath in a logical stack, or "" for a physical root. */
-    on: t.string(),
+    on: t.string().default(""),
     /** Grill zone in direct contact, or -1. */
     zone: t.int8().default(-1),
-    cookA: t.uint8(),
-    cookB: t.uint8(),
-    inner: t.uint8(),
-    burn: t.uint8(),
-    temp: t.uint8(),
+    cookA: t.uint8().default(0),
+    cookB: t.uint8().default(0),
+    inner: t.uint8().default(0),
+    burn: t.uint8().default(0),
+    temp: t.uint8().default(0),
     moisture: t.uint8().default(255),
-    melt: t.uint8(),
-    toast: t.uint8(),
-    sauce: t.uint8(),
-    down: t.uint8(),
-    dirty: t.boolean(),
+    melt: t.uint8().default(0),
+    toast: t.uint8().default(0),
+    sauce: t.uint8().default(0),
+    down: t.uint8().default(0),
+    dirty: t.boolean().default(false),
     /** Assisted flip progress 1..255 while flipping, 0 otherwise. */
-    flip: t.uint8(),
+    flip: t.uint8().default(0),
     /** Offered to teammates by its holder. */
-    offered: t.boolean(),
+    offered: t.boolean().default(false),
     /** Sauce bottle fill level 0..255. */
-    level: t.uint8(),
+    level: t.uint8().default(0),
     /** Layer index within its stack (0 = root). */
-    layer: t.uint8(),
+    layer: t.uint8().default(0),
     /** Root id of the stack this item belongs to ("" when it is a root itself). */
-    root: t.string(),
+    root: t.string().default(""),
   },
   "ItemState",
 );
@@ -84,9 +84,9 @@ export type ItemState = SchemaType<typeof ItemState>;
 
 export const GrillZoneState = schema(
   {
-    knob: t.float32(),
+    knob: t.float32().default(0),
     /** Surface temperature in °C (fictional), 0..255. */
-    temp: t.uint8(),
+    temp: t.uint8().default(0),
   },
   "GrillZoneState",
 );
@@ -94,14 +94,14 @@ export type GrillZoneState = SchemaType<typeof GrillZoneState>;
 
 export const OrderState = schema(
   {
-    number: t.uint16(),
-    recipe: t.string(),
+    number: t.uint16().default(0),
+    recipe: t.string().default(""),
     modifiers: t.array("string"),
     /** Shift time (seconds) when the ticket printed. */
-    createdAt: t.float32(),
+    createdAt: t.float32().default(0),
     /** "open" | "served" | "refused" | "cancelled" */
-    status: t.string(),
-    score: t.uint8(),
+    status: t.string().default(""),
+    score: t.uint8().default(0),
   },
   "OrderState",
 );
@@ -109,30 +109,30 @@ export type OrderState = SchemaType<typeof OrderState>;
 
 export const RestaurantState = schema(
   {
-    protocol: t.uint16(),
-    name: t.string(),
+    protocol: t.uint16().default(0),
+    name: t.string().default(""),
     /** "prep" | "open" | "closing" | "summary" */
-    phase: t.string(),
+    phase: t.string().default(""),
     /** "relaxed" | "normal" */
-    mode: t.string(),
-    paused: t.boolean(),
-    pauseReason: t.string(),
+    mode: t.string().default(""),
+    paused: t.boolean().default(false),
+    pauseReason: t.string().default(""),
     /** Server tick at which a resume countdown finishes, 0 when none. */
-    resumeTick: t.uint32(),
+    resumeTick: t.uint32().default(0),
     /** Authoritative fixed-step counter (60 Hz). Drives client interpolation clocks. */
-    tick: t.uint32(),
+    tick: t.uint32().default(0),
     /** Simulated seconds since the shift opened. */
-    shiftTime: t.float32(),
-    balance: t.int32(),
-    revenue: t.int32(),
-    costs: t.int32(),
-    waste: t.int32(),
-    served: t.uint16(),
-    nextOrder: t.uint16(),
+    shiftTime: t.float32().default(0),
+    balance: t.int32().default(0),
+    revenue: t.int32().default(0),
+    costs: t.int32().default(0),
+    waste: t.int32().default(0),
+    served: t.uint16().default(0),
+    nextOrder: t.uint16().default(0),
     /** "ok" | "pending" | "unavailable" */
-    saveStatus: t.string(),
-    drawer: t.float32(),
-    shiftSwitch: t.boolean(),
+    saveStatus: t.string().default(""),
+    drawer: t.float32().default(0),
+    shiftSwitch: t.boolean().default(false),
     players: t.map(PlayerState),
     items: t.map(ItemState),
     grill: t.array(GrillZoneState),
