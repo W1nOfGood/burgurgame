@@ -41,6 +41,10 @@ import { MaterialLibrary } from "./materials.js";
 import { foodTexture } from "./foodTextures.js";
 import { buildProps } from "./props.js";
 import { loadBakedEnvironment, type BakedEnvironment } from "./environment.js";
+import { ART_BASE } from "./art.js";
+import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import type { Node } from "@babylonjs/core/node";
 
 export type PickInfo =
   | { type: "surface"; kind: SurfaceKind }
@@ -247,6 +251,92 @@ export class RestaurantView {
   private readonly preset: GraphicsPreset;
   /** Set once the Blender-authored environment is in the scene. */
   baked: BakedEnvironment | null = null;
+  /** Procedural stand-ins hidden (but still pickable) once authored props arrive. */
+  private readonly standIns: Mesh[] = [];
+  private readonly knobVisuals: TransformNode[] = [];
+  private leverVisual: TransformNode | null = null;
+  private neon: PBRMaterial[] = [];
+  private neonLevels: number[] = [];
+
+  /** Swaps procedural stand-ins for the Blender-authored props (knobs, drawer, pans, sign). */
+  private async loadProps(): Promise<void> {
+    const scene = this.scene;
+    const container = await LoadAssetContainerAsync("props.gltf", scene, { rootUrl: `${ART_BASE}props/` });
+    container.addAllToScene();
+    const gltfRoot = container.meshes.find((mm) => mm.name === "__root__");
+    if (!gltfRoot) throw new Error("props.gltf: no root");
+    const nodes = new Map<string, Node>();
+    for (const n of gltfRoot.getChildren()) nodes.set(n.name, n);
+    // Each authored group keeps its glTF-space transforms under a handedness converter.
+    const mount = (node: Node, holder: TransformNode): void => {
+      const conv = new TransformNode(`${node.name}_conv`, scene);
+      conv.rotation.y = Math.PI;
+      conv.scaling.z = -1;
+      conv.parent = holder;
+      node.parent = conv;
+      const meshes = (node as TransformNode).getChildMeshes(false) as AbstractMesh[];
+      if (node instanceof Mesh) meshes.push(node);
+      for (const mm of meshes) {
+        mm.isPickable = false;
+        mm.receiveShadows = this.preset !== "low";
+        this.shadows?.addShadowCaster(mm, false);
+      }
+    };
+    const holder = (name: string, x: number, y: number, z: number, ry = 0): TransformNode => {
+      const h = new TransformNode(name, scene);
+      h.position.set(x, y, z);
+      h.rotation.y = ry;
+      return h;
+    };
+    // Grill knobs.
+    const knob = nodes.get("knob");
+    if (knob instanceof Mesh) {
+      GRILL_ZONES.forEach((zone, i) => {
+        const h = holder(`knob_vis_${i}`, zone.knob[0], zone.knob[1], 4.157);
+        mount(i === 0 ? knob : knob.clone(`knob_${i}`, null)!, h);
+        this.knobVisuals.push(h);
+      });
+    }
+    // Drawer: rides on the existing animated drawer node.
+    const drawer = nodes.get("drawer");
+    if (drawer) mount(drawer, this.drawer);
+    // Ingredient pans at each dispenser (lip level with the rail).
+    for (const d of DISPENSERS) {
+      const n = nodes.get(`bin_${d.id}`) ?? nodes.get(d.id);
+      if (!n || d.requiresDrawer !== undefined || d.kind === "tray") continue;
+      const lip = d.center[2] > 3 ? 0.972 : 0.952;
+      mount(n, holder(`pan_${d.id}`, d.center[0], lip, d.center[2]));
+    }
+    const trays = nodes.get("tray_stack");
+    const td = DISPENSERS.find((d) => d.kind === "tray");
+    if (trays && td) mount(trays, holder("tray_stack_vis", td.center[0], td.center[1], td.center[2]));
+    // Wall toggle on the kitchen face of the counter, facing the kitchen.
+    const plate = nodes.get("switch_plate");
+    const lever = nodes.get("switch_lever");
+    if (plate && lever) {
+      const h = holder("switch_vis", SHIFT_SWITCH[0], SHIFT_SWITCH[1], 0.352, Math.PI);
+      mount(plate, h);
+      const pivot = new TransformNode("switch_lever_pivot", scene);
+      pivot.parent = h;
+      pivot.position.set(0, 0, -0.012);
+      mount(lever, pivot);
+      this.leverVisual = pivot;
+    }
+    // Neon OPEN sign in the left window.
+    const sign = nodes.get("open_sign");
+    if (sign) {
+      mount(sign, holder("open_sign_vis", -3.6, 1.9, -6.0));
+      for (const mm of (sign as TransformNode).getChildMeshes(false)) {
+        const mat = mm.material as PBRMaterial | null;
+        if (mat && mat.name.startsWith("emit_neon_open") && !this.neon.includes(mat)) {
+          this.neon.push(mat);
+          this.neonLevels.push(mat.emissiveIntensity);
+        }
+      }
+    }
+    for (const mm of this.standIns) mm.isVisible = false;
+    gltfRoot.dispose(true, false);
+  }
 
   /**
    * Loads the baked environment (glTF + lightmaps + probes). Falls back to the procedural
@@ -264,6 +354,7 @@ export class RestaurantView {
       }
       this.scene.environmentIntensity = 1.0;
       this.materials.restoreMetalness();
+      await this.loadProps().catch((err) => console.warn("Authored props unavailable; keeping stand-ins", err));
       return "baked";
     } catch (err) {
       console.warn("Baked environment unavailable; using the procedural restaurant", err);
@@ -369,11 +460,13 @@ export class RestaurantView {
       knob.rotation.x = Math.PI / 2;
       knob.position.set(zone.knob[0], zone.knob[1], zone.knob[2] - 0.0);
       knob.material = knobMat;
+      this.standIns.push(knob);
       const mark = MeshBuilder.CreateBox(`knob_mark_${i}`, { width: 0.008, height: 0.012, depth: 0.03 }, this.scene);
       mark.parent = knob;
       mark.position.set(0, -0.021, 0.02);
       mark.material = markMat;
       mark.isPickable = false;
+      this.standIns.push(mark);
       setPick(knob, { type: "knob", zone: i });
       this.knobs.push(knob);
 
@@ -418,6 +511,7 @@ export class RestaurantView {
       setPick(pile, { type: "dispenser", id: d.id, kind: d.kind });
     }
     root.position.set(CHILLER_DRAWER.handle[0], CHILLER_DRAWER.handle[1], CHILLER_DRAWER.handle[2]);
+    this.standIns.push(...(root.getChildMeshes() as Mesh[]));
     return root;
   }
 
@@ -436,6 +530,7 @@ export class RestaurantView {
         }
         const merged = mergeGroup("tray_stack", stack, { type: "dispenser", id: d.id, kind: "tray" })!;
         merged.material = m.solid("tray_red", [0.66, 0.07, 0.05], 0.38);
+        this.standIns.push(merged);
         continue;
       }
       // Ingredient bins: a textured fill of the actual ingredient inside a hollow steel rim.
@@ -444,6 +539,7 @@ export class RestaurantView {
       bin.material = this.binMaterial(m, d.kind);
       bin.receiveShadows = true;
       setPick(bin, { type: "dispenser", id: d.id, kind: d.kind });
+      this.standIns.push(bin);
       const [hx, , hz] = d.half;
       for (const [w, dd, ox, oz] of [
         [hx * 2, 0.012, 0, hz - 0.006],
@@ -458,6 +554,7 @@ export class RestaurantView {
     }
     const rimMerged = mergeGroup("bin_rims", rims, null);
     if (rimMerged) rimMerged.material = m.solid("bin_rim", [0.7, 0.71, 0.73], 0.3, 0.9);
+    this.standIns.push(...(rimMerged ? [rimMerged] : []));
     // One label strip per bin row (one texture, one draw call each).
     const rows = new Map<number, typeof binDefs>();
     for (const d of binDefs) rows.set(d.center[2], [...(rows.get(d.center[2]) ?? []), d]);
@@ -532,11 +629,13 @@ export class RestaurantView {
     plate.position.set(SHIFT_SWITCH[0], SHIFT_SWITCH[1], SHIFT_SWITCH[2] - 0.01);
     plate.material = m.solid("switch_plate", [0.9, 0.88, 0.84], 0.4);
     setPick(plate, { type: "switch" });
+    this.standIns.push(plate);
     const lever = MeshBuilder.CreateBox("switch_lever", { width: 0.03, height: 0.07, depth: 0.03 }, this.scene);
     lever.parent = plate;
     lever.position.set(0, 0, 0.02);
     lever.material = m.solid("switch_lever", [0.12, 0.12, 0.12], 0.4);
     setPick(lever, { type: "switch" });
+    this.standIns.push(lever);
     const label = MeshBuilder.CreatePlane("switch_label", { width: 0.2, height: 0.05 }, this.scene);
     label.position.set(SHIFT_SWITCH[0], SHIFT_SWITCH[1] + 0.12, SHIFT_SWITCH[2] + 0.001);
     label.rotation.y = Math.PI;
@@ -556,6 +655,7 @@ export class RestaurantView {
     lm.roughness = 0.9;
     label.material = lm;
     label.isPickable = false;
+    this.standIns.push(label);
     return lever;
   }
 
@@ -585,6 +685,7 @@ export class RestaurantView {
     sign.material = mat;
     sign.isPickable = false;
     this.glowMeshes.push(sign);
+    this.standIns.push(sign);
     return mat;
   }
 
@@ -743,6 +844,8 @@ export class RestaurantView {
       const knob = this.knobs[i]!;
       // 0 = off (pointing up), 1 = full (rotated 270°)
       knob.rotation.z = -g.knob * Math.PI * 1.5;
+      const kv = this.knobVisuals[i];
+      if (kv) kv.rotation.z = g.knob * Math.PI * 1.5;
       const heat = Math.max(0, Math.min(1, (g.temp - 60) / 190));
       this.knobLamps[i]!.emissiveColor.set(g.knob > 0.02 ? 1 : 0.02, g.knob > 0.02 ? 0.45 : 0.02, 0.02);
       // Barely-there warmth on a hot plate; heat is read from sound, lamps and smoke, not glow.
@@ -750,8 +853,12 @@ export class RestaurantView {
     });
     this.drawer.position.z = CHILLER_DRAWER.handle[2] - state.drawer * CHILLER_DRAWER.travel;
     this.lever.rotation.x = state.shiftSwitch ? -0.5 : 0.5;
+    if (this.leverVisual) this.leverVisual.rotation.x = state.shiftSwitch ? 0.45 : -0.45;
     const open = state.phase === "open";
     this.openSign.emissiveColor.set(open ? 1.4 : 0.06, open ? 0.25 : 0.02, open ? 0.35 : 0.02);
+    this.neon.forEach((mat, i) => {
+      mat.emissiveIntensity = (this.neonLevels[i] ?? 1) * (open ? 1 : 0.03);
+    });
 
     this.ticketTimer -= dt;
     const orders = [...state.orders.values()].filter((o) => o.status === "open").sort((a, b) => a.number - b.number);

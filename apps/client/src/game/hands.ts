@@ -6,6 +6,23 @@ import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { Scene } from "@babylonjs/core/scene";
 import type { GripPose } from "@ahb/data";
 import type { MaterialLibrary } from "./materials.js";
+import { BoneDriver, findNode, loadContainer, mountGltfNode } from "./rig.js";
+
+/** Per-grip finger curl (radians at each joint, before per-joint scaling). */
+const CURL: Record<GripPose | "idle", { fingers: number; index: number; thumb: number }> = {
+  idle: { fingers: 0.22, index: 0.16, thumb: 0.1 },
+  pinch: { fingers: 0.75, index: 0.55, thumb: 0.55 },
+  flat: { fingers: 0.12, index: 0.1, thumb: 0.15 },
+  tool: { fingers: 1.15, index: 1.05, thumb: 0.75 },
+  bottle: { fingers: 1.0, index: 0.9, thumb: 0.7 },
+  tray: { fingers: 0.25, index: 0.25, thumb: 0.5 },
+};
+
+interface AuthoredHand {
+  holder: TransformNode;
+  fingers: { driver: BoneDriver; finger: string; joint: number }[];
+  curl: { fingers: number; index: number; thumb: number };
+}
 
 interface HandPose {
   pos: Vector3;
@@ -13,8 +30,8 @@ interface HandPose {
   curl: number;
 }
 
-const IDLE_R: HandPose = { pos: new Vector3(0.24, -0.28, 0.42), rot: new Vector3(0.2, -0.2, 0.1), curl: 0.3 };
-const IDLE_L: HandPose = { pos: new Vector3(-0.24, -0.3, 0.4), rot: new Vector3(0.2, 0.2, -0.1), curl: 0.3 };
+const IDLE_R: HandPose = { pos: new Vector3(0.21, -0.24, 0.4), rot: new Vector3(0.3, -0.28, 0.4), curl: 0.3 };
+const IDLE_L: HandPose = { pos: new Vector3(-0.21, -0.255, 0.39), rot: new Vector3(0.3, 0.28, -0.4), curl: 0.3 };
 
 /**
  * First-person hands parented to the camera. Placeholder mitten geometry with grip poses per
@@ -23,6 +40,8 @@ const IDLE_L: HandPose = { pos: new Vector3(-0.24, -0.3, 0.4), rot: new Vector3(
 export class FirstPersonHands {
   private readonly right: TransformNode;
   private readonly left: TransformNode;
+  private authored: { right: AuthoredHand; left: AuthoredHand } | null = null;
+  private gripR: GripPose | "idle" = "idle";
   private readonly fingersR: Mesh[] = [];
   private readonly fingersL: Mesh[] = [];
   private targetR: HandPose = IDLE_R;
@@ -86,6 +105,64 @@ export class FirstPersonHands {
     this.left = build("fp_left", -1, this.fingersL);
     this.right.position.copyFrom(IDLE_R.pos);
     this.left.position.copyFrom(IDLE_L.pos);
+    void this.loadAuthored(scene).catch((err) => console.warn("Authored hands unavailable; keeping stand-ins", err));
+  }
+
+  /** Swaps the stand-in mittens for the rigged, gloved hands from characters.py. */
+  private async loadAuthored(scene: Scene): Promise<void> {
+    const container = await loadContainer(scene, "hands.gltf", "characters");
+    container.addAllToScene();
+    const root = container.meshes.find((m) => m.name === "__root__");
+    if (!root) throw new Error("hands.gltf: no root");
+    const make = (side: "R" | "L", pivot: TransformNode): AuthoredHand => {
+      const armature = root.getChildren().find((n) => n.name === `hand_${side}`);
+      if (!armature) throw new Error(`hands.gltf: hand_${side} missing`);
+      // The authored wrist sits at the origin with the palm ~5 cm ahead; the stand-in pivot is
+      // at the palm, so offset the model back to keep grip targets where they were.
+      const holder = new TransformNode(`fp_hand_${side}`, scene);
+      holder.parent = pivot;
+      holder.position.set(0, 0.006, -0.05);
+      mountGltfNode(armature, holder, scene);
+      for (const m of (armature as TransformNode).getChildMeshes(false)) {
+        m.isPickable = false;
+        m.alwaysSelectAsActiveMesh = true;
+        m.metadata = { hands: true };
+      }
+      holder.computeWorldMatrix(true);
+      for (const n of (armature as TransformNode).getDescendants(false)) (n as TransformNode).computeWorldMatrix?.(true);
+      const right = Vector3.TransformNormal(new Vector3(1, 0, 0), pivot.getWorldMatrix()).normalize();
+      const down = Vector3.TransformNormal(new Vector3(0, -1, 0), pivot.getWorldMatrix()).normalize();
+      const fwd = Vector3.TransformNormal(new Vector3(0, 0, 1), pivot.getWorldMatrix()).normalize();
+      const fingers: AuthoredHand["fingers"] = [];
+      for (const finger of ["index", "middle", "ring", "pinky", "thumb"]) {
+        for (let joint = 1; joint <= 3; joint++) {
+          const node = findNode(armature, `${finger}_0${joint}`);
+          if (!node) continue;
+          const child = joint < 3 ? findNode(armature, `${finger}_0${joint + 1}`) : (node.getChildren()[0] as TransformNode | undefined) ?? null;
+          // Fingers flex about the hand's side axis; the thumb folds across the palm.
+          const axis = finger === "thumb" ? fwd.add(right.scale(side === "R" ? -0.35 : 0.35)).add(down.scale(0.3)).normalize() : right;
+          const towards = finger === "thumb" ? right.scale(side === "R" ? 1 : -1).add(down).normalize() : down;
+          fingers.push({ driver: new BoneDriver(node, axis, child ?? null, towards), finger, joint });
+        }
+      }
+      return { holder, fingers, curl: { ...CURL.idle } };
+    };
+    // Calibrate in a neutral pivot pose, then hide the stand-ins.
+    const savedR = this.right.rotation.clone();
+    const savedL = this.left.rotation.clone();
+    this.right.rotation.setAll(0);
+    this.left.rotation.setAll(0);
+    this.right.computeWorldMatrix(true);
+    this.left.computeWorldMatrix(true);
+    const right = make("R", this.right);
+    const left = make("L", this.left);
+    this.right.rotation.copyFrom(savedR);
+    this.left.rotation.copyFrom(savedL);
+    for (const mesh of [...this.right.getChildMeshes(true), ...this.left.getChildMeshes(true)]) {
+      if (mesh.metadata?.placeholder) mesh.isVisible = false;
+    }
+    this.authored = { right, left };
+    root.dispose(true, false);
   }
 
   get meshes(): Mesh[] {
@@ -97,6 +174,7 @@ export class FirstPersonHands {
    * @param grip grip style for the held object.
    */
   update(dt: number, heldLocal: Vector3 | null, grip: GripPose | null, moving: number, bobAmount: number): void {
+    this.gripR = heldLocal && grip ? grip : "idle";
     if (heldLocal && grip) {
       const near = heldLocal.clone();
       if (grip === "tray") {
@@ -137,9 +215,27 @@ export class FirstPersonHands {
         if (tip) tip.rotation.x = target.curl * 0.9;
       }
     }
+    if (this.authored) {
+      const kc = 1 - Math.exp(-dt * 12);
+      for (const [hand, pose] of [
+        [this.authored.right, CURL[this.gripR]],
+        [this.authored.left, this.gripR === "tray" ? CURL.tray : CURL.idle],
+      ] as const) {
+        hand.curl.fingers += (pose.fingers - hand.curl.fingers) * kc;
+        hand.curl.index += (pose.index - hand.curl.index) * kc;
+        hand.curl.thumb += (pose.thumb - hand.curl.thumb) * kc;
+        for (const f of hand.fingers) {
+          const base = f.finger === "thumb" ? hand.curl.thumb : f.finger === "index" ? hand.curl.index : hand.curl.fingers;
+          // Proximal joints bend least, middle most (natural flexion); pinky curls a touch more.
+          const k = f.joint === 1 ? 0.75 : f.joint === 2 ? 1.1 : 0.8;
+          const extra = f.finger === "pinky" ? 1.12 : f.finger === "ring" ? 1.05 : 1;
+          f.driver.set(base * k * extra);
+        }
+      }
+    }
   }
 
   setVisible(on: boolean): void {
-    for (const m of this.meshes) m.isVisible = on;
+    for (const m of this.meshes) m.isVisible = on && !(this.authored && m.metadata?.placeholder);
   }
 }

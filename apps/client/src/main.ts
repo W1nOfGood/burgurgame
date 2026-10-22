@@ -103,6 +103,12 @@ async function enter(s: Session, R: Rapier): Promise<void> {
       },
     };
   }
+  // Keep the loading screen up while the kitchen's art streams in (bounded, so a slow
+  // connection still gets in and sees stand-ins that upgrade in place).
+  const entered = game;
+  await Promise.race([entered.ready, new Promise((r) => setTimeout(r, 25_000))]);
+  if (game !== entered || session !== s) return; // left or replaced while loading
+  if (debug) (window as unknown as Record<string, { ready?: boolean }>).__ahb!.ready = true;
   ui.hideScreen();
   if (platform() === "touch" && !settings.touchTutorialSeen) {
     game.setMenuOpen(true);

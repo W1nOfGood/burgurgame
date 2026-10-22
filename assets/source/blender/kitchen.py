@@ -334,8 +334,9 @@ def island(s, ex) -> None:
         s.add(K, bl.cylinder(f"is_roll_{z}", ((x0 + x1) / 2, 0.905, z), 0.016, x1 - x0, m["steel"], axis="x", segments=16))
     legs(s, "is", x0 + 0.02, x1 - 0.02, z0 + 0.02, z1 - 0.02, 0.88, mid=True, shelf=0.24)
     # Topping rail housing on the north side (pans are dynamic).
-    s.add(K, aabb("is_rail", -1.86, y1, 2.36, -0.54, 0.95, 2.6, m["steel"], bevel=0.004, cull_bottom=False))
-    s.add(K, aabb("is_rail_well", -1.83, 0.949, 2.385, -0.57, 0.951, 2.575, bl.solid("cavity", (0.05, 0.055, 0.06), 0.6), cull_bottom=False))
+    # Open frame: the pans drop in and rest on the worktop.
+    for name, (a0, b0, a1, b1) in {"n": (-1.86, 2.575, -0.54, 2.6), "s": (-1.86, 2.36, -0.54, 2.385), "e": (-0.57, 2.385, -0.54, 2.575), "w": (-1.86, 2.385, -1.83, 2.575)}.items():
+        s.add(K, aabb(f"is_rail_{name}", a0, y1, b0, a1, 0.955, b1, m["steel"], bevel=0.003, cull_bottom=False))
     # Ticket printer and a stack of paper boats at the east end.
     s.add(K, aabb("is_printer", 0.86, y1, 2.3, 1.12, y1 + 0.13, 2.55, bl.solid("printer", (0.12, 0.12, 0.13), 0.4), bevel=0.02, cull_bottom=False))
     s.add(K, aabb("is_printer_paper", 0.92, y1 + 0.1, 2.27, 1.06, y1 + 0.103, 2.31, bl.solid("paper", (0.96, 0.95, 0.92), 0.8), cull_bottom=False))

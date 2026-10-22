@@ -18,8 +18,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import bpy  # noqa: E402  (bpy first: it makes bmesh/mathutils importable)
 import bmesh  # noqa: E402
-import bpy  # noqa: E402
 from mathutils import Vector, noise  # noqa: E402
 
 from ahb import bl, foodtex, kit  # noqa: E402
@@ -234,6 +234,7 @@ def bun(t, top: bool) -> bpy.types.Object:
     else:
         o = revolve("bun_bottom", prof, 64, disp, [crumb, crust], lambda tt: 0 if tt < split else 1)
     planar_uv(o, 0.13)
+    side_uv(o, 0.13, lambda p: abs(p.normal.z) < 0.55)
     if top:
         # Sesame seeds scattered over the crown.
         rnd = random.Random(42)
@@ -279,21 +280,22 @@ def slab_square(name: str, half: float, thick: float, mat, subdiv: int = 18) -> 
 
 
 def lettuce(t) -> bpy.types.Object:
-    R = ITEMS["lettuce"]["shape"]["radius"] + 0.006
+    """A torn piece of leaf lettuce: oval outline with lobes, soft cupping, frilled margin."""
+    R = ITEMS["lettuce"]["shape"]["radius"] + 0.004
     bm = bmesh.new()
-    rings, seg = 10, 72
+    rings, seg = 12, 96
     rows = []
     for i in range(rings + 1):
-        rr = R * i / rings
+        rr = i / rings
         row = []
         for j in range(seg if i else 1):
             th = j / seg * 2 * math.pi
-            edge = 1 + 0.09 * n3(math.cos(th), math.sin(th), 0, 3, 2.2) + 0.04 * math.sin(th * 13)
-            r = rr * edge
+            outline = R * (0.86 + 0.14 * math.cos(th) ** 2) * (1 + 0.07 * n3(math.cos(th), math.sin(th), 0, 2.2, 2.2) + 0.035 * math.sin(th * 9 + 0.5))
+            r = outline * rr
             x, z = r * math.cos(th), r * math.sin(th)
-            ruffle = (i / rings) ** 2.2 * (0.006 * math.sin(th * 17 + 1.3) + 0.004 * n3(x, 0, z, 90, 1.0))
-            cup = 0.004 * (i / rings) ** 2
-            row.append(bm.verts.new(bl.G(x, ruffle + cup, z)))
+            frill = rr ** 3 * (0.0045 * math.sin(th * 23 + 3 * n3(x, 0, z, 40, 1.1)) + 0.003 * n3(x, 0, z, 110, 3.3))
+            cup = 0.007 * rr ** 2 - 0.002 * (1 - rr)
+            row.append(bm.verts.new(bl.G(x, frill + cup + 0.0012 * n3(x, 0, z, 60, 5.0), z)))
         rows.append(row)
     for j in range(seg):
         bm.faces.new((rows[0][0], rows[1][j], rows[1][(j + 1) % seg]))
@@ -305,7 +307,7 @@ def lettuce(t) -> bpy.types.Object:
     o = bl._obj_from_bm("lettuce", bm, t["lettuce"], None)
     for p in o.data.polygons:
         p.use_smooth = True
-    planar_uv(o, R * 2.2)
+    planar_uv(o, R * 2.3)
     return o
 
 
@@ -449,7 +451,7 @@ def tray(t) -> bpy.types.Object:
     for p in me.polygons:
         for li in p.loop_indices:
             co = me.vertices[me.loops[li].vertex_index].co
-            uv[li].uv = ((-co.x + 0.155) / 0.31, 1 - (-co.y + 0.11) / 0.22)
+            uv[li].uv = ((-co.x + 0.155) / 0.31, (-co.y + 0.11) / 0.22)
     return bl.join([o, liner], "tray")
 
 
@@ -472,16 +474,38 @@ def spatula(t) -> bpy.types.Object:
     # Offset tang: up and back.
     parts.append(bl.tube("sp_tang", [(0, -0.0008, bz0 + 0.005), (0, 0.004, bz0 - 0.02), (0, 0.022, bz0 - 0.05), (0, 0.026, bz0 - 0.07)], 0.004, t["steel"]))
     handle = bl.lathe("sp_handle", [(0.0, 0.0), (0.009, 0.0), (0.0115, 0.01), (0.0125, 0.06), (0.0118, 0.1), (0.0095, 0.118), (0.0, 0.12)], (0, 0, 0), t["walnut"], segments=20)
-    handle.rotation_euler = (math.pi / 2, 0, 0)
-    handle.location = bl.G(0, 0.027, bz0 - 0.065)
+    handle.rotation_euler = (-math.pi / 2 + math.radians(12), 0, 0)
+    handle.location = bl.G(0, 0.026, bz0 - 0.066)
     bl.transform_apply(handle)
     bl.ensure_uv(handle)
     parts.append(handle)
-    for k, zz in enumerate((bz0 - 0.09, bz0 - 0.14)):
-        parts.append(bl.cylinder(f"sp_rivet_{k}", (0, 0.027, zz), 0.003, 0.026, t["brass"], axis="x", segments=10))
+    for k, dz in enumerate((0.025, 0.07)):
+        zz = bz0 - 0.066 - dz * math.cos(math.radians(12))
+        yy = 0.026 + dz * math.sin(math.radians(12))
+        parts.append(bl.cylinder(f"sp_rivet_{k}", (0, yy, zz), 0.0028, 0.0255, t["brass"], axis="x", segments=10))
     for p in parts:
         bl.ensure_uv(p)
     return bl.join(parts, "spatula")
+
+
+def sauce_drizzle(t) -> bpy.types.Object:
+    """A squeeze-bottle zig-zag of sauce: flattened tube lying on y=0, ~8 cm across."""
+    pts = []
+    rnd = random.Random(12)
+    n = 9
+    for i in range(n):
+        x = -0.04 + i * 0.08 / (n - 1)
+        z = (0.028 if i % 2 else -0.028) * (1 - abs(x) / 0.06) + rnd.uniform(-0.003, 0.003)
+        pts.append((x, 0.0, z))
+    o = bl.bezier_tube("sauce_drizzle", pts, 0.0032, t["sauce"], resolution=8, segments=10)
+    o.scale = (1.0, 1.0, 0.45)
+    bl.transform_apply(o)
+    # A soft puddle where the stream started.
+    blob = bl.lathe("sauce_pool", [(0.0, 0.0012), (0.006, 0.0011), (0.009, 0.0004), (0.0095, 0.0), (0.0, 0.0)], (-0.04, 0.0, -0.008), t["sauce"], segments=16, smooth_angle=80)
+    out = bl.join([o, blob], "sauce_drizzle")
+    for p in out.data.polygons:
+        p.use_smooth = True
+    return out
 
 
 def bottle(t, kind: str, sauce: str) -> bpy.types.Object:
@@ -501,7 +525,8 @@ def bottle(t, kind: str, sauce: str) -> bpy.types.Object:
             elif ref - a > math.pi:
                 a += 2 * math.pi
             co = me.vertices[me.loops[li].vertex_index].co
-            uv[li].uv = ((a / (2 * math.pi)) % 1.0 if abs(a - ref) < 1e-6 else (a / (2 * math.pi)) - math.floor(ref / (2 * math.pi)), (co.z - (-H + 0.03)) / ((H - 0.075) - (-H + 0.03)))
+            base = (ref / (2 * math.pi)) % 1.0
+            uv[li].uv = (base + (a - ref) / (2 * math.pi), (co.z - (-H + 0.03)) / ((H - 0.075) - (-H + 0.03)))
     for p in (body, cap):
         bl.ensure_uv(p)
     return bl.join([body, cap, band], kind)
@@ -518,7 +543,7 @@ def materials() -> dict:
     t = {}
     t["patty"] = pbr_tex("food_patty", ft["beef"]["raw"], normal=ft["beef"]["normal"], rough=0.38, normal_strength=1.0)
     t["veggie_patty"] = pbr_tex("food_veggie_patty", ft["veggie"]["raw"], normal=ft["veggie"]["normal"], rough=0.5)
-    t["bun_crust"] = pbr_tex("food_bun_crust", ft["bun"]["crust"], normal=ft["bun"]["crust_normal"], rough=0.3, coat=0.35)
+    t["bun_crust"] = pbr_tex("food_bun_crust", ft["bun"]["crust"], normal=ft["bun"]["crust_normal"], rough=0.38, coat=0.15)
     t["bun_crumb"] = pbr_tex("food_bun_crumb", ft["bun"]["crumb"], normal=ft["bun"]["crumb_normal"], rough=0.85)
     t["sesame"] = bl.solid("food_sesame", (0.96, 0.9, 0.74), 0.45)
     t["cheese"] = pbr_tex("food_cheese", ft["cheddar"], rough=0.42, sss=0.3)
@@ -533,10 +558,11 @@ def materials() -> dict:
     t["jalapeno"] = pbr_tex("food_jalapeno", ft["jalapeno"], rough=0.25)
     t["jalapeno_skin"] = bl.solid("food_jalapeno_skin", (0.17, 0.36, 0.1), 0.18, coat=0.5)
     t["bacon"] = pbr_tex("food_bacon", ft["bacon"]["raw"], normal=ft["bacon"]["normal"], rough=0.4)
-    t["egg_white"] = pbr_tex("food_egg_white", ft["egg"]["set"], rough=0.2, sss=0.3)
+    t["egg_white"] = pbr_tex("food_egg_white", ft["egg"]["raw"], rough=0.2, sss=0.3)
     t["egg_yolk"] = bl.solid("food_egg_yolk", (0.98, 0.62, 0.06), 0.12, coat=0.8)
     t["mushroom"] = pbr_tex("food_mushroom", ft["mushroom"]["raw"], rough=0.6)
     t["tray"] = bl.solid("tray_plastic", (0.62, 0.06, 0.04), 0.32)
+    t["sauce"] = bl.solid("food_sauce", (1.0, 1.0, 1.0), 0.1, coat=0.6)
     t["liner"] = pbr_tex("tray_liner", ft["liner"], rough=0.9)
     t["steel"] = material("steel")
     t["walnut"] = material("walnut_slats", "walnut_handle")
@@ -593,6 +619,7 @@ def build() -> list[bpy.types.Object]:
         mushrooms(t),
         tray(t),
         spatula(t),
+        sauce_drizzle(t),
     ]
     for kind, sauce in (("sauce_bottle", "house"), ("ketchup_bottle", "ketchup"), ("mustard_bottle", "mustard"), ("mayo_bottle", "mayo"), ("bbq_bottle", "bbq")):
         objs.append(bottle(t, kind, sauce))
@@ -602,32 +629,84 @@ def build() -> list[bpy.types.Object]:
     return objs
 
 
+def world_hdr(path: str, strength: float = 1.0) -> None:
+    w = bpy.context.scene.world
+    nt = w.node_tree
+    for nd in list(nt.nodes):
+        nt.nodes.remove(nd)
+    out = nt.nodes.new("ShaderNodeOutputWorld")
+    bg = nt.nodes.new("ShaderNodeBackground")
+    env = nt.nodes.new("ShaderNodeTexEnvironment")
+    env.image = bpy.data.images.load(path)
+    # Our equirect is u = 0.5 + atan2(z, x)/2pi in game space; rotate Blender's lookup to match.
+    mp = nt.nodes.new("ShaderNodeMapping")
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp.inputs["Rotation"].default_value = (0, 0, math.pi / 2)
+    mp.inputs["Scale"].default_value = (1, -1, 1)
+    nt.links.new(tc.outputs["Generated"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], env.inputs["Vector"])
+    nt.links.new(env.outputs["Color"], bg.inputs["Color"])
+    bg.inputs["Strength"].default_value = strength
+    nt.links.new(bg.outputs[0], out.inputs[0])
+
+
+def cooked_variant(src: bpy.types.Object, name: str, mat_name: str, albedo: str, rough: float) -> bpy.types.Object:
+    o = bl.duplicate(src, name)
+    m = src.data.materials[0].copy()
+    m.name = mat_name
+    for nd in m.node_tree.nodes:
+        if nd.type == "TEX_IMAGE" and nd.image and nd.image.colorspace_settings.name == "sRGB":
+            nd.image = bl.image(albedo)
+    for nd in m.node_tree.nodes:
+        if nd.type == "BSDF_PRINCIPLED":
+            nd.inputs["Roughness"].default_value = rough
+    o.data.materials[0] = m
+    return o
+
+
 def preview(objs) -> None:
-    """Hero shot: the food laid out on a steel counter under a softbox."""
+    """Look-development renders lit by the kitchen's own reflection probe."""
     os.makedirs(os.path.join(BUILD, "preview"), exist_ok=True)
     from ahb.library import material
 
+    ft = foodtex.build_all()
     steel = material("steel")
-    kit.aabb("counter", -0.6, -0.04, -0.4, 0.6, 0.0, 0.4, steel, uv=0.5)
-    order = ["bun_bottom", "patty", "cheese", "lettuce", "tomato", "onion", "pickle", "bun_top", "veggie_patty", "swiss", "bacon", "egg", "mushroom", "jalapeno", "spatula", "ketchup_bottle", "mustard_bottle", "tray"]
+    kit.aabb("counter", -0.7, -0.04, -0.5, 0.7, 0.0, 0.6, steel, uv=0.5)
+    hdr = os.path.join(BUILD, "probe_kitchen.hdr")
+    if os.path.exists(hdr):
+        world_hdr(hdr, 1.0)
+    else:
+        bl.world_color((0.3, 0.3, 0.3), 1.0)
     by = {o.name: o for o in objs}
-    for i, name in enumerate(order[:14]):
-        o = by[name]
-        x = -0.45 + (i % 7) * 0.15
-        z = -0.1 + (i // 7) * 0.17
-        h = ITEMS[name]["shape"].get("halfHeight", ITEMS[name]["shape"].get("half", [0, 0.003, 0])[1] if "half" in ITEMS[name]["shape"] else 0.003)
-        o.location = bl.G(x, h + 0.002, z)
-    by["spatula"].location = bl.G(0.32, 0.03, 0.25)
-    by["ketchup_bottle"].location = bl.G(-0.45, 0.09, 0.25)
-    by["mustard_bottle"].location = bl.G(-0.38, 0.09, 0.27)
-    by["tray"].location = bl.G(0.0, 0.01, 0.28)
-    kit.area_light("soft_key", (0.2, 0.9, -0.4), (0.8, 0.5), 120.0, (1.0, 0.95, 0.88), facing=(-0.2, -1, 0.45), up=(0, 0, 1))
-    kit.area_light("soft_fill", (-0.8, 0.5, 0.1), (0.6, 0.6), 30.0, (0.85, 0.9, 1.0), facing=(1, -0.5, 0), up=(0, 1, 0))
-    bl.world_color((0.05, 0.05, 0.06), 1.0)
-    bl.camera("cam", (0.0, 0.42, -0.62), (0.0, 0.0, 0.02), lens=40)
-    bl.render(os.path.join(BUILD, "preview", "food.jpg"), width=1280, height=720, samples=96, exposure=1.0)
-    bl.camera("cam2", (-0.32, 0.12, -0.25), (-0.32, 0.01, -0.08), lens=55)
-    bl.render(os.path.join(BUILD, "preview", "food_close.jpg"), width=1280, height=720, samples=96, exposure=1.0)
+    seared = cooked_variant(by["patty"], "patty_seared", "food_patty_seared", ft["beef"]["seared"], 0.5)
+    crisp = cooked_variant(by["bacon"], "bacon_crisp", "food_bacon_crisp", ft["bacon"]["crisp"], 0.45)
+    grid = [["patty", "patty_seared", "veggie_patty", "bun_bottom", "bun_top"], ["cheese", "swiss", "lettuce", "tomato", "onion"], ["pickle", "jalapeno", "bacon", "bacon_crisp", "egg"], ["mushroom"]]
+    by["patty_seared"] = seared
+    by["bacon_crisp"] = crisp
+    for r, row in enumerate(grid):
+        for c, name in enumerate(row):
+            o = by[name]
+            shape = ITEMS.get(name.replace("_seared", "").replace("_crisp", ""), ITEMS["patty"])["shape"]
+            h = shape["halfHeight"] if "halfHeight" in shape else shape["half"][1]
+            o.location = bl.G(-0.3 + c * 0.15, h + 0.001, 0.25 - r * 0.15)
+    kit.area_light("soft_key", (0.0, 1.2, -0.2), (1.0, 0.6), 60.0, (1.0, 0.95, 0.88), facing=(0, -1, 0.2), up=(0, 0, 1))
+    bl.camera("cam", (0.0, 0.62, -0.42), (0.0, 0.0, 0.07), lens=34)
+    bl.render(os.path.join(BUILD, "preview", "food.jpg"), width=1280, height=720, samples=128, exposure=1.0)
+    # Assembled classic cheeseburger on a tray, hero close-up.
+    for o in objs:
+        o.location = bl.G(5, 0, 5)
+    trayo = by["tray"]
+    trayo.location = bl.G(0.0, 0.01, 0.0)
+    y = 0.02 + 0.002
+    stack = [("bun_bottom", by["bun_bottom"]), ("patty", seared), ("cheese", by["cheese"]), ("lettuce", by["lettuce"]), ("tomato", by["tomato"]), ("onion", by["onion"]), ("bun_top", by["bun_top"])]
+    for name, o in stack:
+        lh = ITEMS[name]["layerHeight"]
+        o.location = bl.G(0.0, y + lh / 2, 0.0)
+        y += lh
+    by["ketchup_bottle"].location = bl.G(0.26, 0.09, 0.12)
+    by["spatula"].location = bl.G(-0.3, 0.012, 0.05)
+    bl.camera("cam2", (0.05, 0.2, -0.36), (0.0, 0.07, 0.0), lens=50)
+    bl.render(os.path.join(BUILD, "preview", "burger.jpg"), width=1280, height=720, samples=160, exposure=1.0)
 
 
 def main() -> None:
@@ -641,7 +720,12 @@ def main() -> None:
         return
     for o in objs:
         o.location = (0, 0, 0)
-    bl.export_gltf(os.path.join(OUT, "food.gltf"), objs, image_format="WEBP", quality=88)
+    bl.export_gltf(os.path.join(OUT, "food.gltf"), objs, image_format="WEBP", quality=86)
+    # Cooked-state textures the client blends towards (not referenced by the glTF itself).
+    from PIL import Image
+
+    for name in ("beef_seared", "beef_cook", "veggie_seared", "veggie_cook", "bun_toasted", "bun_crumb_cook", "bacon_crisp", "bacon_cook", "mushroom_seared", "egg_white_set"):
+        Image.open(os.path.join(foodtex.OUT, f"{name}.png")).convert("RGB").save(os.path.join(OUT, f"{name}.webp"), quality=90, method=6)
     print("[food] exported", OUT)
 
 

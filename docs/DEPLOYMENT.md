@@ -159,7 +159,10 @@ clicks.
      `127.0.0.1:2567` and a proxy context for `/` (WebSocket proxying is supported).
 
 5. **Static file caching** (optional but recommended): long cache for `/assets/*` (the files
-   are fingerprinted) and `no-cache` for `index.html`.
+   are fingerprinted), `no-cache` for `index.html` and for `/art/*` (the Blender-built models,
+   lightmaps and probes keep their names between builds, so browsers must revalidate them), and
+   gzip for `.gltf`/`.bin`/`.env` (`model/gltf+json`, `application/octet-stream`). The Nginx
+   example in `deploy/nginx/after-hours.conf` already does all of this.
 
 The game container is unaffected by the panel; Docker and DirectAdmin coexist. PostgreSQL runs
 in its own container and does not touch DirectAdmin's MySQL/MariaDB.

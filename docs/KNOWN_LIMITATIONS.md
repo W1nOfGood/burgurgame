@@ -20,9 +20,23 @@ Honest status against the specification. Nothing below is claimed as done.
 
 ## Not built yet
 
-- **Stage 3 visual benchmark:** all art is procedural placeholder. No authored GLB hero assets,
-  rigged hands or characters, baked lighting, or recorded audio. Metal reflections use a
-  runtime reflection probe on desktop presets only.
+- **Art is authored by code, not by hand.** Every model, texture and bake is produced by the
+  Blender scripts in `assets/source/blender` (procedural modelling, numpy-synthesised PBR
+  textures, signed-distance sculpting). There is no photogrammetry, scanned material library or
+  hand sculpting; fine organic detail (food surfaces, cloth folds, faces) is good at game
+  distance but does not hold up to extreme close-ups the way scanned assets would.
+- **Characters** are stylised-real: realistic proportions, but teammates wear caps and
+  food-safety masks rather than showing a fully modelled face, and the rig is driven
+  procedurally (walk, reach, crouch, look, finger curl) — there are no motion-captured or
+  keyframed clips, no facial animation and no cloth simulation.
+- **Lighting is static.** Global illumination, AO and reflections are baked for the night
+  layout; moving equipment in `packages/data` requires rebuilding the restaurant. Dynamic
+  objects get one real-time key light with shadows plus the probes, so they never bounce
+  light onto the room, and reflections in steel/glass do not show moving players or food.
+- **Recorded audio** has not been produced: sound is still Web Audio synthesis.
+- **Art on real GPUs** has only been reviewed in software-rendered (SwiftShader) captures and
+  Cycles previews; colour, exposure and texture density need a pass on calibrated displays and
+  on an iPad.
 - **Stage 4:** customers (NPCs, queueing), fries, drinks, cleaning/spills, stock purchasing UI,
   upgrades, decoration, the in-world office catalog/ledger (the ledger appears as an overlay at
   shift end; purchases exist in the store API only).

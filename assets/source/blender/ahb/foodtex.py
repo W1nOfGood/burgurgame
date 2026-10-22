@@ -97,8 +97,8 @@ def mince(n: int = 1024, seed: int = 7, veggie: bool = False) -> dict[str, str]:
     """
     rng = np.random.default_rng(seed)
     h, ids, pr = _worms(n, 1500, seed, radius_px=12.0, length_px=(50, 160))
-    h = blur(h, 0.7)
-    pr = blur(pr, 0.7)
+    h = np.clip(blur(h, 0.7), 0.0, 1.0)
+    pr = np.clip(blur(pr, 0.7), 0.0, 1.0)
     crevice = 1 - smooth(0.0, 0.55, pr)
     strand_tone = rng.random(ids.max() + 2)[ids]
     flecks = noise(n, seed=seed + 1, lo=60, hi=220, beta=0.2)
@@ -112,19 +112,19 @@ def mince(n: int = 1024, seed: int = 7, veggie: bool = False) -> dict[str, str]:
         raw = lerp(raw, rgb("#3f3a1e"), crevice[..., None] * 0.7)
         seared = lerp(rgb("#4a3118"), rgb("#7a5226"), pr[..., None])
     else:
-        raw = lerp(rgb("#7d1622"), rgb("#d4545a"), sat(0.25 * strand_tone + 0.75 * pr ** 0.8)[..., None])
-        raw = lerp(raw, rgb("#3e0910"), crevice[..., None] ** 1.5 * 0.85)
+        raw = lerp(rgb("#6a0f1b"), rgb("#c2343f"), sat(0.25 * strand_tone + 0.75 * pr ** 0.8)[..., None])
+        raw = lerp(raw, rgb("#33060c"), crevice[..., None] ** 1.5 * 0.9)
         raw = lerp(raw, lerp(rgb("#ecc9c0"), rgb("#d99a92"), strand_tone[..., None]), sat(fat_amt * 1.6)[..., None] * 0.8)
         raw = raw * (0.94 + 0.06 * along[..., None] * 0.5)
         # Smashed on a flat top, the high strands take the deepest crust; crevices stay grey-brown.
-        seared = lerp(rgb("#6a4129"), rgb("#4d2915"), strand_tone[..., None] * 0.6)
-        seared = lerp(seared, rgb("#24110a"), sat(h * 1.4 - 0.35)[..., None] * 0.8)
-        seared = lerp(seared, rgb("#8f5b39"), crevice[..., None] ** 1.2 * 0.6)
+        seared = lerp(rgb("#8a5232"), rgb("#6e3a1c"), strand_tone[..., None] * 0.6)
+        seared = lerp(seared, rgb("#3e1d0c"), sat(h * 1.4 - 0.35)[..., None] * 0.75)
+        seared = lerp(seared, rgb("#a8714a"), crevice[..., None] ** 1.2 * 0.55)
         seared = lerp(seared, rgb("#a8743e"), sat(fat_amt * 1.6)[..., None] * 0.45)
         seared = seared * (0.85 + 0.25 * pr[..., None])
     prog = sat(0.65 * (1 - h) + 0.35 * sat(0.5 + 0.5 * fbm(n, seed=seed + 8, base=2, octaves=4)))
     rough_raw = sat(0.3 + 0.35 * crevice - 0.1 * fat)
-    rough_ck = sat(0.52 - 0.2 * h - 0.2 * fat + 0.2 * crevice)
+    rough_ck = sat(0.42 - 0.18 * h - 0.2 * fat + 0.2 * crevice)
     height = 0.0008 * h + 0.0009 * pr + 0.00005 * along
     name = "veggie" if veggie else "beef"
     return {
@@ -162,29 +162,28 @@ def brioche(n: int = 1024, seed: int = 21) -> dict[str, str]:
 
 
 def tomato(n: int = 1024, seed: int = 31) -> str:
-    """Tomato slice cross-section in the unit disc: skin, pericarp, locule gel with seeds."""
+    """Tomato slice cross-section in the unit disc: skin, pericarp walls, glossy gel with seeds."""
     ys, xs = (np.mgrid[0:n, 0:n] + 0.5) / n * 2 - 1
-    r = np.hypot(xs, ys)
-    a = np.arctan2(ys, xs)
-    wob = 0.02 * noise(n, seed=seed, lo=2, hi=8, beta=1.5)
-    loc_n = 5
-    sector = np.cos(loc_n * (a + 0.3))
-    locule = (r > 0.22 + wob) & (r < 0.78 + wob) & (sector < 0.55)
-    flesh = rgb("#d2321f")
-    img = np.broadcast_to(flesh, (n, n, 3)).copy()
-    img = lerp(img, rgb("#e5604a"), sat(0.5 + 0.4 * noise(n, seed=seed + 1, lo=6, hi=60, beta=1))[..., None] * 0.5)
-    gel = lerp(rgb("#e8774e"), rgb("#f2a35a"), sat(0.5 + 0.5 * noise(n, seed=seed + 2, lo=10, hi=80, beta=1))[..., None])
-    img = np.where(locule[..., None], gel, img)
-    # Seeds: small ellipses along the locule walls.
-    f1, f2, cid = voronoi(n, n, 900, seed=seed + 3)
-    seeds = (f1 * n < 5.5) & locule & (per_tile(cid, seed + 4) > 0.45)
-    img = np.where(seeds[..., None], rgb("#f3d58f"), img)
-    core = r < 0.2 + wob
-    img = np.where(core[..., None], lerp(rgb("#e88a6a"), rgb("#f0b08a"), sat(1 - r / 0.2)[..., None]), img)
-    skin = r > 0.93 + wob * 0.5
-    img = np.where(skin[..., None], rgb("#b5180e"), img)
-    walls = np.abs(sector - 0.55) < 0.08
-    img = lerp(img, rgb("#ec8c70"), (walls & (r > 0.2) & (r < 0.85))[..., None] * 0.5)
+    wx = 0.05 * noise(n, seed=seed, lo=2, hi=10, beta=1.5)
+    wy = 0.05 * noise(n, seed=seed + 1, lo=2, hi=10, beta=1.5)
+    x, y = xs + wx, ys + wy
+    r = np.hypot(x, y)
+    a = np.arctan2(y, x)
+    loc_n = 6
+    ang = a + 0.25 * np.sin(r * 5.0 + 0.4)
+    sector = np.cos(loc_n * ang)
+    loc_mask = smooth(0.62, 0.35, sector) * smooth(0.18, 0.26, r) * smooth(0.82, 0.72, r)
+    flesh = lerp(rgb("#c92a1a"), rgb("#e0452f"), sat(0.5 + 0.4 * noise(n, seed=seed + 2, lo=6, hi=60, beta=1))[..., None])
+    flesh = lerp(flesh, rgb("#f07a5c"), smooth(0.3, 0.0, r)[..., None] * 0.7)
+    gel = lerp(rgb("#e0603e"), rgb("#f39a5e"), sat(0.5 + 0.5 * noise(n, seed=seed + 3, lo=10, hi=80, beta=1))[..., None])
+    img = lerp(flesh, gel, loc_mask[..., None])
+    f1, f2, cid = voronoi(n, n, 700, seed=seed + 4)
+    sx = f1 * n
+    seeds = smooth(7.0, 4.0, sx) * (loc_mask > 0.5) * (per_tile(cid, seed + 5) > 0.4)
+    img = lerp(img, rgb("#f2d48a"), seeds[..., None] * 0.9)
+    img = lerp(img, rgb("#b81a0c"), smooth(0.9, 0.97, r)[..., None])
+    img = lerp(img, rgb("#ffb08a"), (smooth(0.5, 0.62, sector) * smooth(0.6, 0.5, sector) * (r > 0.22) * (r < 0.85))[..., None] * 0.25)
+    img = blur(img, 1.2)
     return _save(img, "tomato_slice")
 
 
@@ -202,20 +201,25 @@ def pickle(n: int = 512, seed: int = 51, jalapeno: bool = False) -> str:
     ys, xs = (np.mgrid[0:n, 0:n] + 0.5) / n * 2 - 1
     r = np.hypot(xs, ys)
     if jalapeno:
-        img = np.broadcast_to(rgb("#4f8a2c"), (n, n, 3)).copy()
-        inner = r < 0.72
-        img = np.where(inner[..., None], rgb("#c9d89a"), img)
         a = np.arctan2(ys, xs)
-        seeds = (r < 0.45) & (np.cos(a * 9) > 0.6) & (r > 0.15)
-        img = np.where(seeds[..., None], rgb("#efe6c0"), img)
-        img = np.where((r < 0.12)[..., None], rgb("#dfe8b0"), img)
-        img = np.where((r > 0.93)[..., None], rgb("#2c5a17"), img)
+        img = np.broadcast_to(rgb("#5f8f34"), (n, n, 3)).copy()
+        img = lerp(img, rgb("#7aa64a"), sat(0.5 + 0.4 * noise(n, seed=seed, lo=6, hi=40, beta=1))[..., None])
+        pith = (r < 0.55) & (r > 0.12)
+        img = np.where(pith[..., None], lerp(rgb("#e8ecc8"), rgb("#d6e0a4"), sat(r * 1.5)[..., None]), img)
+        hole = r < 0.3
+        img = np.where(hole[..., None], rgb("#3d5a22"), img)
+        seeds = (np.abs(r - 0.36) < 0.07) & (np.cos(a * 7) > 0.2)
+        img = np.where(seeds[..., None], rgb("#f4ecd0"), img)
+        img = np.where((r > 0.9)[..., None], rgb("#1f4012"), img)
+        img = blur(img, 1.0)
         return _save(img, "jalapeno_slice")
-    img = lerp(rgb("#9db04a"), rgb("#c4c771"), sat(1 - r)[..., None])
+    # Crinkle-cut dill pickle: olive skin, translucent yellow-green flesh, seed ring.
+    img = lerp(rgb("#8a9a3c"), rgb("#b8b866"), sat(1 - r)[..., None])
     a = np.arctan2(ys, xs)
     seeds = (np.abs(r - 0.42) < 0.08) & (np.cos(a * 7) > 0.3)
     img = np.where(seeds[..., None], rgb("#e3dca0"), img)
-    img = np.where((r > 0.86)[..., None], rgb("#3e5a1c"), img)
+    img = np.where((r > 0.86)[..., None], rgb("#3a4d18"), img)
+    img = blur(img, 1.0)
     img = img * (0.92 + 0.08 * noise(n, seed=seed, lo=10, hi=80, beta=1)[..., None])
     return _save(img, "pickle_slice")
 
@@ -223,7 +227,7 @@ def pickle(n: int = 512, seed: int = 51, jalapeno: bool = False) -> str:
 def lettuce(n: int = 1024, seed: int = 61) -> dict[str, str]:
     """Green-leaf lettuce: pale midrib, branching veins, ruffled darker margins."""
     ys, xs = (np.mgrid[0:n, 0:n] + 0.5) / n * 2 - 1
-    mid = np.abs(xs) < 0.06 + 0.04 * (1 - (ys + 1) / 2)
+    mid = np.abs(xs + 0.02 * np.sin(ys * 3)) < 0.025 + 0.02 * (1 - (ys + 1) / 2)
     veins = np.zeros((n, n))
     for k in range(-9, 10):
         y0 = k * 0.11
@@ -234,12 +238,12 @@ def lettuce(n: int = 1024, seed: int = 61) -> dict[str, str]:
     edge = sat(np.hypot(xs * 1.0, ys * 0.9) - 0.55) * 2
     base = lerp(base, rgb("#3d7a24"), edge[..., None])
     base = lerp(base, rgb("#d9eba0"), veins[..., None] * 0.7)
-    base = np.where(mid[..., None], rgb("#e3f0b8"), base)
+    base = np.where(mid[..., None], rgb("#cfe59a"), base)
     height = 0.0004 * veins + 0.0006 * mid + 0.0003 * noise(n, seed=seed + 1, lo=6, hi=40, beta=1.2)
     return {"albedo": _save(base, "lettuce_leaf"), "normal": _save(_normal(height, 0.14, 1.0), "lettuce_normal")}
 
 
-def cheese(n: int = 512, seed: int = 71, swiss: bool = False) -> str:
+def cheese(n: int = 512, seed: int = 71, swiss: bool = False) -> str:  # noqa: C901
     if swiss:
         img = lerp(rgb("#f4e7b8"), rgb("#efdc9c"), sat(0.5 + 0.4 * noise(n, seed=seed, lo=3, hi=30, beta=1))[..., None])
         f1, f2, cid = voronoi(n, n, 14, seed=seed + 1, jitter=0.8)
@@ -250,7 +254,7 @@ def cheese(n: int = 512, seed: int = 71, swiss: bool = False) -> str:
         img = lerp(img, rgb("#d9c27a"), rim[..., None] * 0.6)
         rgba = np.concatenate([img, alpha[..., None]], -1)
         return _save(rgba, "swiss_slice", "RGBA")
-    img = lerp(rgb("#f2a028"), rgb("#f7b23a"), sat(0.5 + 0.4 * noise(n, seed=seed, lo=3, hi=30, beta=1))[..., None])
+    img = lerp(rgb("#e57f14"), rgb("#f09424"), sat(0.5 + 0.4 * noise(n, seed=seed, lo=3, hi=30, beta=1))[..., None])
     img = img * (0.96 + 0.04 * noise(n, seed=seed + 3, lo=60, hi=200, beta=0.5)[..., None])
     return _save(img, "cheddar_slice")
 
@@ -260,10 +264,11 @@ def bacon(n: int = 1024, seed: int = 81) -> dict[str, str]:
     ys, xs = (np.mgrid[0:n, 0:n] + 0.5) / n
     warp = 0.04 * noise(n, seed=seed, lo=1, hi=6, beta=1.5)
     bands = np.sin((ys + warp) * 2 * np.pi * 3.2)
-    fat = smooth(0.2, 0.55, bands)
+    fat = smooth(0.1, 0.7, bands + 0.25 * noise(n, seed=seed + 6, lo=4, hi=30, beta=1.0, aniso=(4.0, 1.0)))
     marb = sat(noise(n, seed=seed + 1, lo=10, hi=80, beta=0.8, aniso=(4.0, 1.0)) - 0.6)
     fat = sat(fat + marb * 0.5)
-    raw = lerp(rgb("#b8343a"), rgb("#f1d8cf"), fat[..., None])
+    raw = lerp(lerp(rgb("#a8323a"), rgb("#c95a5c"), sat(0.5 + 0.4 * marb)[..., None]), rgb("#efd3c6"), (fat * 0.85)[..., None])
+    raw = raw * (0.92 + 0.08 * noise(n, seed=seed + 5, lo=20, hi=120, beta=0.6, aniso=(3.0, 1.0))[..., None])
     crisp = lerp(rgb("#6e2c14"), rgb("#c98a52"), fat[..., None])
     crisp = lerp(crisp, rgb("#3a160a"), sat(noise(n, seed=seed + 2, lo=6, hi=40, beta=1) - 0.4)[..., None] * 0.6)
     height = 0.0005 * fat + 0.0003 * noise(n, seed=seed + 3, lo=10, hi=60, beta=1, aniso=(3.0, 1.0))

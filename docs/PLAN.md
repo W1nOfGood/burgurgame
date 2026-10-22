@@ -31,7 +31,7 @@ sequenced input batches instead, because the spec asks for ~30 messages/s carryi
 | --- | --- |
 | 1 — Multiplayer interaction slice | Playable: shared kitchen for desktop + touch, grab/hand-over, knobs, drawer, spatula flips, assembly, sauces, serving with one-time payment. Verified by room tests and Playwright desktop + iPad-emulated tests. **Physical iPad not yet tested.** |
 | 2 — Persistence and recovery | Foundations built and tested: guest identity, PostgreSQL schema + migrations, fenced leases, transactional sales/purchases, checkpoints, restore without double-serving, room lifecycle, pause rules. |
-| 3 — Visual benchmark | Procedural placeholder pass only (see `ASSET_MANIFEST.md`). |
+| 3 — Visual benchmark | Authored art pass built by code in Blender (`docs/ASSET_PIPELINE.md`): modelled restaurant with Cycles-baked GI lightmaps, AO and box-projected reflection probes; hero food with cooking-state shaders; stocked props; rigged gloved hands and crew members. Recorded audio and review on real GPUs/iPad outstanding. |
 | 4 — Restaurant shift | 16 recipes in three unlock tiers, modifiers, scoring, ledger overlay. No customers, fries, drinks, cleaning or upgrades yet. |
 | 5 — Release hardening | Deployment stack, backups and smoke test exist; measurements, physical-device and load testing outstanding. |
 
@@ -114,11 +114,13 @@ Goal: desktop and touch clients share one authoritative kitchen and complete a c
 - Solo pause through a server-approved request; co-op pause by unanimous vote; resume with a
   visible countdown.
 
-## Stage 3 — visual benchmark (not started; needs authored assets)
+## Stage 3 — visual benchmark (art pass built; audio and device review outstanding)
 
-Hero assets (hands, grill, food, tools) authored in Blender as GLB with PBR maps; asset
-manifest; reflection probes; baked lighting; audio library. Placeholders are marked as such in
-code (`placeholder` mesh metadata) so they can be audited before the milestone is called done.
+Hero assets (hands, grill, food, tools) are authored by code in Blender and exported as glTF
+with PBR maps (`docs/ASSET_PIPELINE.md`); the asset manifest records sources and licences;
+reflection probes and baked lighting ship with the restaurant. Remaining: a recorded audio
+library and an art review on real GPUs and an iPad. Stand-ins that remain only as fallbacks are
+marked with `placeholder` mesh metadata so they can be audited.
 
 ## Stage 4 — restaurant shift (partially scaffolded)
 

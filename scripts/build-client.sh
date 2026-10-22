@@ -14,6 +14,11 @@ docker build -f deploy/Dockerfile --target client-dist \
 mkdir -p "$DEST"
 # Copy new hashed assets first, then index.html, so no visitor sees a page without its assets.
 rsync -a "$TMP/assets/" "$DEST/assets/" 2>/dev/null || cp -r "$TMP/assets/." "$DEST/assets/"
+# Blender-built art (stable names; served with revalidation, see deploy/nginx).
+if [ -d "$TMP/art" ]; then
+  mkdir -p "$DEST/art"
+  rsync -a --delete "$TMP/art/" "$DEST/art/" 2>/dev/null || cp -r "$TMP/art/." "$DEST/art/"
+fi
 find "$TMP" -maxdepth 1 -type f ! -name index.html -exec cp {} "$DEST/" \;
 cp "$TMP/index.html" "$DEST/index.html"
 echo "Client deployed to $DEST (realtime origin: $REALTIME_URL)"

@@ -14,6 +14,7 @@ import type { Scene } from "@babylonjs/core/scene";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { registerBuiltInLoaders } from "@babylonjs/loaders/dynamic";
 import type { GraphicsPreset } from "../settings.js";
+import { ART_BASE } from "./art.js";
 
 /**
  * Baked restaurant environment authored in Blender (assets/source/blender/restaurant.py):
@@ -27,7 +28,7 @@ import type { GraphicsPreset } from "../settings.js";
  * because the lightmap already contains all diffuse light; the probe only supplies reflections.
  */
 
-const BASE = `${import.meta.env.BASE_URL}assets/restaurant/`;
+const BASE = `${ART_BASE}restaurant/`;
 
 interface Manifest {
   version: number;

@@ -8,6 +8,8 @@ import type { Scene } from "@babylonjs/core/scene";
 import { ITEMS, isPatty, saucesInMask, type ItemKind, type SauceKind } from "@ahb/data";
 import { pattyDoneness, type FoodState } from "@ahb/simulation";
 import { bottleLabel, foodTexture } from "./foodTextures.js";
+import type { CookUniforms, FoodLibrary, FoodVisual } from "./food.js";
+import type { Material } from "@babylonjs/core/Materials/material";
 import type { MaterialLibrary } from "./materials.js";
 import { setPick } from "./scene.js";
 
@@ -151,11 +153,20 @@ export interface ItemSnapshotLike {
   holder: string;
 }
 
+let foodLibrary: FoodLibrary | null = null;
+
+/** Installs the Blender-authored food library; new item views use it from then on. */
+export function setFoodLibrary(lib: FoodLibrary | null): void {
+  foodLibrary = lib;
+}
+
 /** Visual for one replicated item. Appearance is a pure function of authoritative state. */
 export class ItemView {
   readonly id: string;
   readonly kind: ItemKind;
+  /** Stable pose pivot; the visible body is a child that can be swapped for an authored one. */
   readonly root: Mesh;
+  private body: Mesh;
   private readonly scene: Scene;
   private readonly lib: MaterialLibrary;
   private faces: Uint8Array | null = null;
@@ -165,6 +176,10 @@ export class ItemView {
   private marksTop: Mesh | null = null;
   private marksBottom: Mesh | null = null;
   private sauceBlob: Mesh | null = null;
+  private cook: CookUniforms | null = null;
+  private authored = false;
+  /** Per-item material clones (cooking state, sauce colour); released on dispose/upgrade. */
+  private owned: Material[] = [];
   private appearanceKey = "";
   food: FoodState | null = null;
 
@@ -173,10 +188,59 @@ export class ItemView {
     this.lib = lib;
     this.id = id;
     this.kind = kind;
-    this.root = this.build();
+    this.root = new Mesh(`it_${id}`, scene);
     this.root.rotationQuaternion = Quaternion.Identity();
-    this.root.metadata = { placeholder: true };
-    for (const m of [this.root, ...this.root.getChildMeshes()] as Mesh[]) setPick(m, { type: "item", id });
+    this.root.metadata = { placeholder: false };
+    setPick(this.root, { type: "item", id });
+    this.body = this.makeBody();
+  }
+
+  /** True when this view shows the authored model rather than the procedural stand-in. */
+  get isAuthored(): boolean {
+    return this.authored;
+  }
+
+  /** Every mesh of this item (for shadows, outlines, picking). */
+  meshes(): Mesh[] {
+    return [this.root, ...(this.root.getChildMeshes(false) as Mesh[])];
+  }
+
+  /** Swaps the procedural stand-in for the authored model once the food library is loaded. */
+  upgrade(): boolean {
+    if (this.authored || !foodLibrary?.has(this.kind)) return false;
+    for (const c of this.root.getChildMeshes(true)) c.dispose(false, false);
+    this.releaseMaterials();
+    this.faces = null;
+    this.colorTarget = null;
+    this.uniformTargets = [];
+    this.cheeseBase = null;
+    this.marksTop = this.marksBottom = null;
+    this.sauceBlob = null;
+    this.body = this.makeBody();
+    this.appearanceKey = "";
+    return true;
+  }
+
+  private makeBody(): Mesh {
+    const visual: FoodVisual | null = foodLibrary?.create(this.kind, `it_${this.id}_body`) ?? null;
+    let body: Mesh;
+    if (visual) {
+      body = visual.root;
+      this.cook = visual.cook;
+      this.owned.push(...visual.materials);
+      this.cheeseBase = visual.meltBase;
+      this.authored = true;
+    } else {
+      body = this.build();
+      this.authored = false;
+      body.metadata = { placeholder: true };
+    }
+    body.parent = this.root;
+    body.position.setAll(0);
+    body.rotationQuaternion = null;
+    body.rotation.setAll(0);
+    for (const m of [body, ...body.getChildMeshes()] as Mesh[]) setPick(m, { type: "item", id: this.id });
+    return body;
   }
 
   private build(): Mesh {
@@ -474,7 +538,9 @@ export class ItemView {
     this.appearanceKey = key;
     if (!food) return;
 
-    if (isPatty(this.kind) && this.colorTarget && this.faces) {
+    if (this.authored) {
+      this.applyAuthored(food, meta);
+    } else if (isPatty(this.kind) && this.colorTarget && this.faces) {
       const veggie = this.kind === "veggie_patty";
       // Map the authoritative "down" side onto mesh faces; during the second half of a flip the
       // mesh is upside down, so the mapping inverts until the flip lands.
@@ -506,7 +572,7 @@ export class ItemView {
       else paintFaces(this.colorTarget, this.faces, cut, crust, crust);
     } else if ((this.kind === "cheese" || this.kind === "swiss") && this.cheeseBase) {
       // Cheese softens and droops over the patty edge as it melts.
-      const mesh = this.root;
+      const mesh = this.body;
       const pos = new Float32Array(this.cheeseBase);
       const melt = food.melt;
       for (let i = 0; i < pos.length; i += 3) {
@@ -528,8 +594,30 @@ export class ItemView {
       for (const t of this.uniformTargets) paintUniform(t.mesh, dirty(cookTint(t.base, t.cooked, t.crisp, cook, food.burn), food.dirty));
     }
 
-    // Sauce shows as a glossy blob in the colour of the sauces applied.
-    if (food.sauce > 0.02) {
+    // Sauce: an authored zig-zag drizzle (or a glossy blob) in the colour of the sauces applied.
+    if (food.sauce > 0.02 && this.authored && foodLibrary) {
+      if (!this.sauceBlob) {
+        const d = foodLibrary.createExtra("sauce_drizzle", `it_${this.id}_sauce`);
+        if (d) {
+          if (d.material) this.owned.push(d.material);
+          d.parent = this.root;
+          d.rotation.y = hash(this.id) * Math.PI * 2;
+          setPick(d, { type: "item", id: this.id });
+          this.sauceBlob = d;
+        }
+      }
+      if (this.sauceBlob) {
+        const sauces = saucesInMask(food.sauceMask);
+        const c = sauces.length
+          ? sauces.reduce<RGB>((acc, k) => [acc[0] + SAUCE_COLORS[k][0] / sauces.length, acc[1] + SAUCE_COLORS[k][1] / sauces.length, acc[2] + SAUCE_COLORS[k][2] / sauces.length], [0, 0, 0])
+          : SAUCE_COLORS.house;
+        const mat = this.sauceBlob.material as PBRMaterial | null;
+        if (mat) mat.albedoColor = new Color3(c[0], c[1], c[2]).toLinearSpace();
+        const k = Math.min(1.25, 0.65 + food.sauce * 0.45);
+        this.sauceBlob.scaling.set(k, 1 + Math.min(1, food.sauce) * 0.6, k);
+        this.sauceBlob.position.y = ITEMS[this.kind].layerHeight / 2 + 0.0008;
+      }
+    } else if (food.sauce > 0.02) {
       if (!this.sauceBlob) {
         this.sauceBlob = MeshBuilder.CreateSphere(`it_${this.id}_sauce`, { diameter: 1, segments: 12 }, this.scene);
         this.sauceBlob.material = this.lib.solid("sauce_mat", [1, 1, 1], 0.12);
@@ -544,6 +632,48 @@ export class ItemView {
       const size = Math.min(0.1, 0.03 + food.sauce * 0.05);
       this.sauceBlob.scaling.set(size, 0.005 + food.sauce * 0.003, size * 0.9);
       this.sauceBlob.position.y = ITEMS[this.kind].layerHeight / 2 + 0.002;
+    }
+  }
+
+  /** Drives the authored model's cooking shader and melt from replicated values. */
+  private applyAuthored(food: FoodState, meta: ItemSnapshotLike): void {
+    const c = this.cook;
+    if (c) {
+      c.burn = food.burn;
+      c.dirty = food.dirty ? 1 : 0;
+      if (isPatty(this.kind)) {
+        // Mesh-local top/bottom: during the second half of a flip the mesh is upside down.
+        const flipping = meta.flip > 127;
+        const visualDown = flipping ? (food.down === 0 ? 1 : 0) : food.down;
+        c.bottom = visualDown === 0 ? food.cookA : food.cookB;
+        c.top = visualDown === 0 ? food.cookB : food.cookA;
+        c.side = Math.min(1, food.inner * 0.75 + Math.max(c.top, c.bottom) * 0.2);
+      } else if (this.kind === "bun_bottom" || this.kind === "bun_top") {
+        c.amount = food.toast;
+      } else {
+        c.amount = Math.max(food.cookA, food.cookB);
+      }
+    }
+    if ((this.kind === "cheese" || this.kind === "swiss") && this.cheeseBase) {
+      // Melt: the slice relaxes and drapes over the edge of whatever is beneath it.
+      const pos = new Float32Array(this.cheeseBase);
+      const melt = food.melt;
+      for (let i = 0; i < pos.length; i += 3) {
+        const x = pos[i]!;
+        const z = pos[i + 2]!;
+        const r = Math.max(Math.abs(x), Math.abs(z)) * 0.6 + Math.hypot(x, z) * 0.4;
+        const over = Math.max(0, r - 0.04);
+        const spread = 1 + melt * 0.08;
+        pos[i] = x * spread;
+        pos[i + 2] = z * spread;
+        pos[i + 1] = pos[i + 1]! - over * over * 70 * melt - over * melt * 0.35 + Math.sin(x * 140 + z * 90) * 0.0005 * melt;
+      }
+      this.body.updateVerticesData("position", pos);
+      this.body.createNormals(true);
+      const mat = this.body.material as PBRMaterial | null;
+      if (mat) {
+        mat.roughness = 0.42 - melt * 0.2;
+      }
     }
   }
 
@@ -564,6 +694,13 @@ export class ItemView {
 
   dispose(): void {
     this.root.dispose(false, false);
+    this.releaseMaterials();
+  }
+
+  private releaseMaterials(): void {
+    // Shared textures (cooked maps, albedo) stay alive for other items.
+    for (const m of this.owned) m.dispose(false, false);
+    this.owned = [];
   }
 }
 

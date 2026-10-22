@@ -42,7 +42,7 @@ async function joinOnTablet(browser: Browser, name: string, code: string): Promi
   await page.fill("#name", name);
   await page.fill("#code", code);
   await page.locator("#join").tap();
-  await page.waitForFunction(() => window.__ahb?.game, null, { timeout: 45_000 });
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
   // First touch session shows the touch tutorial.
   await page.getByRole("button", { name: "Got it" }).tap();
   return page;

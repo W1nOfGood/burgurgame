@@ -185,8 +185,79 @@ class Scene:
 args_exposure = 1.0
 
 
-def preview(scene: Scene, tag: str) -> None:
+HERO_SHOTS = {
+    "hero_line": ((0.9, 1.62, 2.6), (-0.5, 0.95, 4.7), 22),
+    "hero_dining": ((4.6, 1.55, -1.0), (-2.8, 1.25, -4.6), 20),
+    "hero_counter": ((-1.2, 1.55, -3.6), (-0.4, 1.35, 1.2), 22),
+    "hero_booth": ((-1.0, 1.35, -1.6), (-5.6, 1.5, -3.4), 26),
+    "hero_street": ((-2.2, 1.6, -4.4), (-1.0, 1.4, -14.0), 24),
+}
+
+
+def dress_for_hero() -> None:
+    """Puts the props and some food in place (as the game would) for presentation renders."""
+    import food
+    import props
+
+    objs = {o.name: o for o in props.build()}
+    by_food = {o.name: o for o in bpy.data.objects if o.name in ("patty", "bun_bottom", "bun_top", "cheese", "lettuce", "tomato", "onion", "tray", "ketchup_bottle", "mustard_bottle", "mayo_bottle", "sauce_bottle", "bbq_bottle", "spatula", "bacon", "egg")}
+    for i, z in enumerate(LAYOUT["GRILL_ZONES"]):
+        k = objs["knob"] if i == 0 else bl.duplicate(objs["knob"], f"knob_{i}")
+        k.location = bl.G(z["knob"][0], z["knob"][1], 4.157)
+    for d in LAYOUT["DISPENSERS"]:
+        o = objs.get(f"bin_{d['id']}")
+        if o is not None:
+            o.location = bl.G(d["center"][0], 0.972 if d["center"][2] > 3 else 0.952, d["center"][2])
+    dr = LAYOUT["CHILLER_DRAWER"]
+    objs["drawer"].location = bl.G(*dr["handle"])
+    td = next(d for d in LAYOUT["DISPENSERS"] if d["kind"] == "tray")
+    objs["tray_stack"].location = bl.G(*td["center"])
+    for n in ("switch_plate", "switch_lever"):
+        objs[n].location = bl.G(LAYOUT["SHIFT_SWITCH"][0], LAYOUT["SHIFT_SWITCH"][1], 0.352 + (0.012 if n == "switch_lever" else 0.0))
+        objs[n].rotation_euler.z = math.pi
+    objs["open_sign"].location = bl.G(-3.6, 1.9, -6.0)
+    # Patties searing on the flat-top, at different stages.
+    ft = food.foodtex.build_all()
+    seared = food.cooked_variant(by_food["patty"], "patty_seared", "food_patty_seared", ft["beef"]["seared"], 0.45)
+    for i, (x, z, src) in enumerate(((-0.55, 4.45, by_food["patty"]), (-0.3, 4.62, seared), (0.05, 4.4, seared), (0.3, 4.66, by_food["patty"]))):
+        o = bl.duplicate(src, f"grill_patty_{i}", linked=True)
+        o.location = bl.G(x, 0.9 + 0.012, z)
+        o.rotation_euler.z = i * 1.3
+    for i, (n, x, z) in enumerate((("bacon", 0.55, 4.4), ("egg", 0.6, 4.7))):
+        o = bl.duplicate(by_food[n], f"grill_{n}", linked=True)
+        o.location = bl.G(x, 0.9 + 0.004, z)
+    # A finished cheeseburger on a tray on the pass.
+    tray = bl.duplicate(by_food["tray"], "pass_tray", linked=True)
+    tray.location = bl.G(-0.5, 1.016, 0.0)
+    y = 1.026
+    for n, src in (("bun_bottom", by_food["bun_bottom"]), ("patty", seared), ("cheese", by_food["cheese"]), ("lettuce", by_food["lettuce"]), ("tomato", by_food["tomato"]), ("onion", by_food["onion"]), ("bun_top", by_food["bun_top"])):
+        lh = food.ITEMS[n]["layerHeight"]
+        o = bl.duplicate(src, f"pass_{n}", linked=True)
+        o.location = bl.G(-0.5, y + lh / 2, 0.0)
+        y += lh
+    for i, n in enumerate(("ketchup_bottle", "mustard_bottle", "mayo_bottle", "bbq_bottle", "sauce_bottle")):
+        o = bl.duplicate(by_food[n], f"island_{n}", linked=True)
+        o.location = bl.G(0.2 + i * 0.09, 0.92 + 0.09, 2.0)
+    sp = bl.duplicate(by_food["spatula"], "island_spatula", linked=True)
+    sp.location = bl.G(0.95, 0.93, 4.12)
+    sp.rotation_euler.z = 0.4
+    for o in bpy.data.objects:
+        if o.name.startswith(("grill_", "pass_", "island_", "knob")):
+            o.hide_render = False
+    for o in list(by_food.values()) + [seared]:
+        o.hide_render = True
+
+
+def preview(scene: Scene, tag: str, hero: bool = False) -> None:
     os.makedirs(PREVIEW, exist_ok=True)
+    if hero:
+        dress_for_hero()
+        for name, (eye, target, lens) in HERO_SHOTS.items():
+            bl.camera(f"cam_{name}", eye, target, lens=lens)
+            t = time.time()
+            bl.render(os.path.join(PREVIEW, f"{name}.jpg"), width=1600, height=900, samples=128, exposure=args_exposure)
+            print(f"[hero] {name} {time.time() - t:.1f}s")
+        return
     shots = {
         "line": ((0.4, 1.62, 2.9), (-0.9, 0.95, 4.7), 18),
         "dining": ((3.2, 1.62, -1.2), (-3.0, 1.2, -4.5), 18),
@@ -330,6 +401,7 @@ def main() -> None:
     ap.add_argument("--preview", action="store_true")
     ap.add_argument("--tag", default="p")
     ap.add_argument("--fast", action="store_true", help="low samples / half-res lightmaps for iteration")
+    ap.add_argument("--hero", action="store_true", help="presentation renders (Cycles, path traced)")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
     bl.reset()
     s = Scene()
@@ -340,8 +412,8 @@ def main() -> None:
     dining.build(s)
     exterior.build(s)
     s.lights()
-    if args.preview:
-        preview(s, args.tag)
+    if args.preview or args.hero:
+        preview(s, args.tag, hero=args.hero)
         return
     fast = args.fast
     bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0)

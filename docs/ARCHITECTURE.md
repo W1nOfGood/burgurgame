@@ -105,3 +105,21 @@ tray is unlocked and nothing is handed over.
   without query strings (the SDK puts the auth token in the WebSocket URL).
 - Test-only teleport hook exists only when `ENABLE_TEST_HOOKS=1`, which the server refuses in
   production.
+
+## Rendering
+
+- **Environment:** the restaurant is a Blender-built glTF with Cycles-baked irradiance and AO
+  lightmaps (UV2) and box-projected `.env` reflection probes (`docs/ASSET_PIPELINE.md`). One
+  key light in Babylon's `LIGHTMAP_SHADOWSONLY` mode applies the lightmaps and lets dynamic
+  objects shadow baked surfaces; a material plugin drops probe irradiance from baked materials.
+  Gameplay never depends on the art: layout boxes from `packages/data` remain the collision
+  (server, prediction) and invisible pick proxies (client).
+- **Food:** item visuals are clones of authored meshes with per-item materials; a shader
+  plugin blends raw → cooked textures from the replicated cooking bytes (per-side browning,
+  burn, dirt), so every client shows the same state without extra messages.
+- **Characters:** skinned first-person hands and crew members are posed procedurally from
+  replicated input (grip, movement, look pitch, crouch, holding).
+- **Fallbacks:** each authored layer loads asynchronously; if it fails, the procedural stand-in
+  stays (the game remains playable with no art files at all).
+- **Presets:** tablet and low skip bloom, glow and SSAO and use smaller shadow maps; high adds
+  SSAO, MSAA and sharpening.

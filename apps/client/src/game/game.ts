@@ -11,6 +11,9 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import "@babylonjs/core/Culling/ray";
 import "@babylonjs/core/Rendering/outlineRenderer";
 import { SceneInstrumentation } from "@babylonjs/core/Instrumentation/sceneInstrumentation";
+import { SSAO2RenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline";
+import "@babylonjs/core/Rendering/geometryBufferRendererSceneComponent";
+import "@babylonjs/core/Rendering/prePassRendererSceneComponent";
 import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline";
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import {
@@ -50,8 +53,10 @@ import type { Ui } from "../ui/ui.js";
 import { AudioEngine, type Sfx } from "./audio.js";
 import { FirstPersonHands } from "./hands.js";
 import { InputManager, type Action } from "./input.js";
-import { ItemView, describeFood } from "./items.js";
-import { AvatarView } from "./players.js";
+import { ItemView, describeFood, setFoodLibrary } from "./items.js";
+import { FoodLibrary } from "./food.js";
+import { GrillSmoke, type SmokeSource } from "./smoke.js";
+import { AvatarView, loadCrew } from "./players.js";
 import { LocalPlayer } from "./prediction.js";
 import { RestaurantView, getPick, type PickInfo } from "./scene.js";
 import { TouchControls } from "./touchControls.js";
@@ -156,6 +161,9 @@ export class Game {
   private orderCount = 0;
   private markers: { mesh: Mesh; until: number }[] = [];
   private disposed = false;
+  private readonly smoke: GrillSmoke | null;
+  /** Resolves once the authored restaurant, food and crew have loaded (or fallen back). */
+  readonly ready: Promise<void>;
   private instrumentation: SceneInstrumentation | null = null;
 
   constructor(engine: AbstractEngine, canvas: HTMLCanvasElement, session: Session, ui: Ui, settings: Settings, R: Rapier, audio: AudioEngine, hooks: GameHooks) {
@@ -188,7 +196,22 @@ export class Game {
     this.restaurant = new RestaurantView(scene, settings.graphics);
     this.hands = new FirstPersonHands(scene, this.camera, this.restaurant.materials);
     this.setupPostProcessing(settings);
-    void this.restaurant.load();
+    this.smoke = settings.graphics === "low" ? null : new GrillSmoke(scene, settings.graphics);
+    const envReady = this.restaurant.load();
+    const foodReady = FoodLibrary.load(scene)
+      .then((lib) => {
+        if (this.disposed) return;
+        setFoodLibrary(lib);
+        for (const view of this.items.values()) if (view.upgrade()) this.restaurant.registerCasters(view.meshes());
+      })
+      .catch((err) => console.warn("Authored food unavailable; keeping procedural items", err));
+    const crewReady = loadCrew(scene)
+      .then(() => {
+        if (this.disposed) return;
+        for (const av of this.avatars.values()) if (av.upgrade()) this.restaurant.registerCasters(av.castMeshes);
+      })
+      .catch((err) => console.warn("Rigged crew unavailable; keeping stand-in avatars", err));
+    this.ready = Promise.allSettled([envReady, foodReady, crewReady]).then(() => undefined);
 
     const me = session.state.players.get(session.sessionId);
     this.local = new LocalPlayer(R, { x: me?.x ?? 0, y: me?.y ?? 0, z: me?.z ?? 3 });
@@ -278,13 +301,25 @@ export class Game {
   }
 
   /**
-   * Restrained post-processing per preset: anti-aliasing everywhere, gentle bloom and vignette
-   * on desktop presets, sharpening on high. Motion blur is never enabled by default.
+   * Restrained post-processing per preset: anti-aliasing everywhere, gentle bloom, vignette and
+   * film grain on desktop presets, SSAO contact shading and sharpening on high. Motion blur is
+   * never enabled by default.
    */
   private setupPostProcessing(settings: Settings): void {
     const preset = settings.graphics;
     if (preset === "low") return;
     const hdr = preset !== "tablet";
+    if (preset === "high" && SSAO2RenderingPipeline.IsSupported) {
+      // Contact shading for dynamic objects (food on counters, feet on the floor); the static
+      // restaurant already carries baked AO.
+      const ssao = new SSAO2RenderingPipeline("ssao", this.scene, { ssaoRatio: 0.5, blurRatio: 1 }, [this.camera]);
+      ssao.radius = 0.35;
+      ssao.totalStrength = 0.9;
+      ssao.base = 0.15;
+      ssao.samples = 12;
+      ssao.maxZ = 30;
+      ssao.expensiveBlur = false;
+    }
     const p = new DefaultRenderingPipeline("post", hdr, this.scene, [this.camera]);
     p.fxaaEnabled = true;
     p.samples = preset === "high" ? 4 : 1;
@@ -303,6 +338,10 @@ export class Game {
     p.imageProcessing.vignetteColor = new Color4(0.08, 0.03, 0.02, 0);
     p.sharpenEnabled = preset === "high";
     p.sharpen.edgeAmount = 0.18;
+    // Faint animated film grain: breaks up banding in the dark dining room on 8-bit displays.
+    p.grainEnabled = (preset === "medium" || preset === "high") && !settings.reducedEffects;
+    p.grain.intensity = 3.5;
+    p.grain.animated = true;
   }
 
   private applyRenderScale(): void {
@@ -409,7 +448,7 @@ export class Game {
         view = new ItemView(this.scene, this.restaurant.materials, id, it.kind as ItemKind);
         this.items.set(id, view);
         this.itemBuffers.set(id, new SnapshotBuffer());
-        this.restaurant.registerCasters([view.root, ...(view.root.getChildMeshes() as Mesh[])]);
+        this.restaurant.registerCasters(view.meshes());
       }
       this.itemBuffers.get(id)!.push(tick, { x: it.x, y: it.y, z: it.z, qx: it.qx, qy: it.qy, qz: it.qz, qw: it.qw });
       view.setAppearance(ITEMS[it.kind as ItemKind]?.food ? readFoodBytes(it) : null, it);
@@ -605,11 +644,16 @@ export class Game {
 
     // Audio: sizzle per zone from authoritative cooking state; listener follows the camera.
     const levels = GRILL_ZONES.map(() => 0);
-    for (const it of state.items.values()) {
+    const smoke: SmokeSource[] = [];
+    for (const [id, it] of state.items) {
       if (it.zone < 0 || it.root) continue;
       const food = readFoodBytes(it);
-      levels[it.zone] = Math.min(1, levels[it.zone]! + sizzleLevel(it.kind as ItemKind, food, state.grill[it.zone]?.temp ?? 0));
+      const level = sizzleLevel(it.kind as ItemKind, food, state.grill[it.zone]?.temp ?? 0);
+      levels[it.zone] = Math.min(1, levels[it.zone]! + level);
+      const p = this.items.get(id)?.root.position;
+      if (p) smoke.push({ x: p.x, y: p.y + (ITEMS[it.kind as ItemKind]?.layerHeight ?? 0.02) / 2, z: p.z, level, burn: food.burn });
     }
+    this.smoke?.update(smoke, paused);
     levels.forEach((l, i) => this.audio.setSizzle(i, paused ? 0 : l));
     const fwd = lookDirection(this.yaw, this.pitch);
     this.audio.setListener(camPos.x, camPos.y, camPos.z, fwd.x, fwd.y, fwd.z);

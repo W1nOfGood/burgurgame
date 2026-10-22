@@ -288,16 +288,16 @@ def checker_floor(name: str = "checker", *, n: int = 1024, size_m: float = 0.6, 
 
 
 def brushed_steel(name: str = "steel", *, n: int = 1024, size_m: float = 0.5, seed: int = 31, smudge: float = 1.0, base_hex: str = "#c9ccd0", rough: float = 0.3) -> PBR:
-    """Grade 304 stainless, #4 brushed finish along U, faint wipe marks and fingerprints."""
-    streak = noise(n, seed=seed, lo=2, hi=400, beta=0.6, aniso=(40.0, 1.0))
-    streak2 = noise(n, seed=seed + 1, lo=60, hi=500, beta=0.2, aniso=(12.0, 1.0))
-    wipe = fbm(n, seed=seed + 2, base=6, octaves=4, gain=0.55)
-    prints = sat(noise(n, seed=seed + 3, lo=30, hi=90, beta=0.5) - 1.8) * sat(noise(n, seed=seed + 4, lo=4, hi=10, beta=1.0) + 0.2)
-    smear = (0.5 + 0.5 * np.tanh(wipe * 0.8)) * 0.6 * smudge + prints * 0.5 * smudge
+    """Grade 304 stainless, #4 brushed finish along U (fine linear grain), faint wipe marks."""
+    grain = noise(n, seed=seed, lo=120, hi=512, beta=0.15, aniso=(60.0, 1.0))
+    grain2 = noise(n, seed=seed + 1, lo=40, hi=200, beta=0.3, aniso=(25.0, 1.0))
+    wipe = fbm(n, seed=seed + 2, base=4, octaves=4, gain=0.55)
+    prints = sat(noise(n, seed=seed + 3, lo=30, hi=90, beta=0.5) - 1.9) * sat(noise(n, seed=seed + 4, lo=4, hi=10, beta=1.0) + 0.2)
+    smear = (0.5 + 0.5 * np.tanh(wipe * 0.8)) * 0.35 * smudge + prints * 0.4 * smudge
     base = rgb(base_hex)
-    albedo = sat(base[None, None, :] * (1 + 0.03 * streak[..., None] + 0.015 * streak2[..., None] - 0.03 * smear[..., None]))
-    r = sat(rough + 0.03 * streak2 + 0.05 * smear)
-    height = 0.000004 * streak + 0.000002 * streak2
+    albedo = sat(base[None, None, :] * (1 + 0.025 * grain[..., None] + 0.015 * grain2[..., None] - 0.02 * smear[..., None]))
+    r = sat(rough + 0.035 * grain + 0.02 * grain2 + 0.05 * smear)
+    height = 0.0000025 * grain + 0.0000015 * grain2
     return PBR(name, albedo, r, height, 1.0, (size_m, size_m))
 
 

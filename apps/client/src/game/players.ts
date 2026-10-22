@@ -1,5 +1,5 @@
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
@@ -9,6 +9,22 @@ import type { Scene } from "@babylonjs/core/scene";
 import { PLAYER } from "@ahb/data";
 import type { MaterialLibrary } from "./materials.js";
 import { setPick } from "./scene.js";
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
+import { BoneDriver, findNode, loadContainer, mountGltfNode } from "./rig.js";
+
+let crewContainer: AssetContainer | null = null;
+
+/** Loads the rigged crew member (characters.py); avatars upgrade from their stand-ins. */
+export async function loadCrew(scene: Scene): Promise<void> {
+  crewContainer = await loadContainer(scene, "crew.gltf", "characters");
+}
+
+interface CrewRig {
+  holder: TransformNode;
+  meshes: AbstractMesh[];
+  d: Record<string, BoneDriver>;
+}
 
 export const PLAYER_COLORS: [number, number, number][] = [
   [0.85, 0.25, 0.2],
@@ -48,9 +64,15 @@ export class AvatarView {
   private phase = 0;
   private last = { x: 0, z: 0, t: 0 };
   private speed = 0;
+  private rig: CrewRig | null = null;
+  private readonly owned: PBRMaterial[] = [];
+  private readonly color: number;
+  private readonly scene: Scene;
 
   constructor(scene: Scene, lib: MaterialLibrary, id: string, color: number) {
     this.id = id;
+    this.color = color;
+    this.scene = scene;
     const seed = [...id].reduce((a, c) => a + c.charCodeAt(0), 0);
     this.root = new TransformNode(`avatar_${id}`, scene);
     this.body = new TransformNode(`avatar_body_${id}`, scene);
@@ -165,10 +187,66 @@ export class AvatarView {
     this.tag.isPickable = false;
 
     for (const m of this.meshes) setPick(m, { type: "player", id });
+    this.upgrade();
   }
 
   get castMeshes(): Mesh[] {
-    return this.casters;
+    return this.rig ? (this.rig.meshes as Mesh[]) : this.casters;
+  }
+
+  /** Replaces the stand-in body with the rigged crew member once it has loaded. */
+  upgrade(): boolean {
+    if (this.rig || !crewContainer) return false;
+    const scene = this.scene;
+    const inst = crewContainer.instantiateModelsToScene((n) => `${n}_${this.id}`, false, { doNotInstantiate: true });
+    const gltfRoot = inst.rootNodes[0];
+    const armature = gltfRoot?.getChildren().find((n) => n.name.startsWith("crew_"));
+    if (!gltfRoot || !armature) return false;
+    // Calibrate with the avatar at the origin facing +Z, then restore its pose.
+    const pos = this.root.position.clone();
+    const yaw = this.root.rotation.y;
+    this.root.position.setAll(0);
+    this.root.rotation.y = 0;
+    const holder = new TransformNode(`crew_holder_${this.id}`, scene);
+    holder.parent = this.root;
+    mountGltfNode(armature, holder, scene);
+    gltfRoot.dispose(true, false);
+    for (const n of [holder, ...holder.getDescendants(false)]) (n as TransformNode).computeWorldMatrix?.(true);
+    const right = new Vector3(1, 0, 0);
+    const fwd = new Vector3(0, 0, 1);
+    const back = new Vector3(0, 0, -1);
+    const node = (n: string) => findNode(armature, `${n}_${this.id}`) ?? findNode(armature, n);
+    const d: Record<string, BoneDriver> = {};
+    const drive = (bone: string, child: string | null, axis: Vector3, towards: Vector3) => {
+      const b = node(bone);
+      if (b) d[bone] = new BoneDriver(b, axis, child ? node(child) : null, towards);
+    };
+    for (const t of ["l", "r"]) {
+      drive(`thigh_${t}`, `shin_${t}`, right, fwd);
+      drive(`shin_${t}`, `foot_${t}`, right, back);
+      drive(`upperarm_${t}`, `forearm_${t}`, right, fwd);
+      drive(`forearm_${t}`, `hand_${t}`, right, fwd);
+    }
+    drive("spine", "chest", right, fwd);
+    drive("neck", "head", right, fwd);
+    drive("head", null, right, fwd);
+    const meshes = holder.getChildMeshes(false);
+    const c = PLAYER_COLORS[this.color % PLAYER_COLORS.length]!;
+    for (const m of meshes) {
+      setPick(m as Mesh, { type: "player", id: this.id });
+      const mat = m.material as PBRMaterial | null;
+      if (mat && mat.name.startsWith("crew_cap")) {
+        const tinted = mat.clone(`crew_cap_${this.id}`) as PBRMaterial;
+        tinted.albedoColor = new Color3(c[0], c[1], c[2]).toLinearSpace();
+        m.material = tinted;
+        this.owned.push(tinted);
+      }
+    }
+    for (const m of this.meshes) m.setEnabled(false);
+    this.root.position.copyFrom(pos);
+    this.root.rotation.y = yaw;
+    this.rig = { holder, meshes, d };
+    return true;
   }
 
   update(x: number, y: number, z: number, yaw: number, pitch: number, crouch: boolean, holding: boolean, label: string, faded: boolean): void {
@@ -184,6 +262,26 @@ export class AvatarView {
     // Walk cycle scaled by speed; crouching folds the body down.
     this.phase += dt * this.speed * 5.5;
     const swing = Math.sin(this.phase) * Math.min(0.6, this.speed * 0.28);
+    if (this.rig) {
+      const r = this.rig.d;
+      const amt = Math.min(1, this.speed * 0.5);
+      const crouchK = crouch ? 1 : 0;
+      r["thigh_l"]?.set(swing * 0.9 + crouchK * 1.25);
+      r["thigh_r"]?.set(-swing * 0.9 + crouchK * 1.25);
+      r["shin_l"]?.set(Math.max(0, -Math.sin(this.phase - 0.6)) * 0.9 * amt + crouchK * 1.7);
+      r["shin_r"]?.set(Math.max(0, Math.sin(this.phase - 0.6)) * 0.9 * amt + crouchK * 1.7);
+      const reach = holding ? 1.05 - pitch * 0.45 : 0;
+      r["upperarm_l"]?.set(holding ? reach : -swing * 0.75);
+      r["upperarm_r"]?.set(holding ? reach : swing * 0.75);
+      r["forearm_l"]?.set(holding ? 0.55 : 0.12 + Math.max(0, -swing) * 0.3);
+      r["forearm_r"]?.set(holding ? 0.55 : 0.12 + Math.max(0, swing) * 0.3);
+      r["spine"]?.set(crouchK * 0.35 + amt * 0.05);
+      r["neck"]?.set(pitch * 0.35);
+      r["head"]?.set(pitch * 0.45);
+      this.rig.holder.position.y = crouch ? -0.38 : Math.abs(Math.cos(this.phase)) * Math.min(0.025, this.speed * 0.01);
+      const vis = faded ? 0.35 : 1;
+      for (const m of this.rig.meshes) m.visibility = vis;
+    }
     this.legL.rotation.x = swing;
     this.legR.rotation.x = -swing;
     this.body.position.y = crouch ? -0.38 : Math.abs(Math.cos(this.phase)) * Math.min(0.03, this.speed * 0.012);
@@ -213,6 +311,11 @@ export class AvatarView {
   }
 
   dispose(): void {
-    this.root.dispose(false, true);
+    // Body materials are shared between avatars (library + glTF), so only this avatar's own
+    // tag and tinted cap are released.
+    this.root.dispose(false, false);
+    this.tag.material?.dispose(false, false);
+    this.tagTex.dispose();
+    for (const m of this.owned) m.dispose(false, false);
   }
 }
