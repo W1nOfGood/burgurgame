@@ -20,12 +20,15 @@ export async function createGameServer(config: ServerConfig, store: Store, opts:
 
   const allowed = (origin: string | null) => (origin ? config.allowedOrigins.includes(origin) : !config.production);
 
+  // The SDK's matchmaking requests use credentials mode "include", so the exact configured
+  // frontend origin gets credentialed CORS; every other origin gets a non-matching origin and no
+  // credentials (never a wildcard).
   matchMaker.controller.getCorsHeaders = (headers: Headers): Record<string, string> => {
     const origin = headers.get("origin");
     if (origin && config.allowedOrigins.includes(origin)) {
-      return { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "false", Vary: "Origin" };
+      return { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true", Vary: "Origin" };
     }
-    return { "Access-Control-Allow-Origin": "null", "Access-Control-Allow-Credentials": "false" };
+    return { "Access-Control-Allow-Origin": config.allowedOrigins[0] ?? "", "Access-Control-Allow-Credentials": "false", Vary: "Origin" };
   };
 
   const transport = new WebSocketTransport({

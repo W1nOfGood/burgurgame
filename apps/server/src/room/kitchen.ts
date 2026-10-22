@@ -1269,7 +1269,6 @@ export class Kitchen {
       const local = rotate(root.rot, { x: 0, y: offsets[i]!, z: forward });
       it.pos = { x: root.pos.x + local.x, y: root.pos.y + local.y, z: root.pos.z + local.z };
       it.rot = root.rot;
-      if (it.food && it.kind === "patty" && it.food.down === 1) it.rot = quatMul(root.rot, quatAxisX(Math.PI));
     }
   }
 

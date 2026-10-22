@@ -81,8 +81,13 @@ export const BOXES: readonly LayoutBox[] = [
   { id: "wall_north", center: [0, WALL_H, 5.1], half: [6.2, WALL_H, 0.1], material: "wall_tile", collide: true },
   { id: "wall_west", center: [-6.1, WALL_H, -0.5], half: [0.1, WALL_H, 5.7], material: "wall_plaster", collide: true },
   { id: "wall_east", center: [6.1, WALL_H, -0.5], half: [0.1, WALL_H, 5.7], material: "wall_plaster", collide: true },
-  { id: "wall_south_left", center: [-3.6, WALL_H, -6.1], half: [2.6, WALL_H, 0.1], material: "wall_plaster", collide: true },
-  { id: "wall_south_right", center: [3.6, WALL_H, -6.1], half: [2.6, WALL_H, 0.1], material: "wall_plaster", collide: true },
+  // Storefront: low wall, window glass, header band on each side of the door.
+  { id: "wall_south_left_low", center: [-3.6, 0.45, -6.1], half: [2.6, 0.45, 0.1], material: "wall_plaster", collide: true },
+  { id: "window_left", center: [-3.6, 1.65, -6.1], half: [2.6, 0.75, 0.03], material: "glass", collide: true },
+  { id: "wall_south_left_high", center: [-3.6, 2.8, -6.1], half: [2.6, 0.4, 0.1], material: "wall_plaster", collide: true },
+  { id: "wall_south_right_low", center: [3.6, 0.45, -6.1], half: [2.6, 0.45, 0.1], material: "wall_plaster", collide: true },
+  { id: "window_right", center: [3.6, 1.65, -6.1], half: [2.6, 0.75, 0.03], material: "glass", collide: true },
+  { id: "wall_south_right_high", center: [3.6, 2.8, -6.1], half: [2.6, 0.4, 0.1], material: "wall_plaster", collide: true },
   { id: "door_header", center: [0, 2.85, -6.1], half: [1.0, 0.35, 0.1], material: "wall_plaster", collide: true },
   { id: "front_door", center: [0, 1.25, -6.1], half: [1.0, 1.25, 0.04], material: "glass", collide: true },
 

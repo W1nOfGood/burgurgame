@@ -28,7 +28,7 @@ import {
   type ToastMessage,
   type WelcomeMessage,
 } from "@ahb/protocol";
-import type { z } from "zod";
+import { z } from "zod";
 import { verifyGuestToken } from "../auth.js";
 import type { ServerConfig } from "../config.js";
 import { log } from "../log.js";
@@ -55,6 +55,8 @@ interface Session {
 }
 
 const RESULT_CACHE = 128;
+
+const debugTeleportSchema = z.object({ x: z.number().min(-6).max(6), z: z.number().min(-6).max(5), yaw: z.number().min(-10).max(10), pitch: z.number().min(-1.5).max(1.5) });
 
 function isAllowedOrigin(config: ServerConfig, origin: string | null | undefined): boolean {
   if (!origin) return !config.production;
@@ -482,5 +484,9 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
       this.broadcast(SERVER_MSG.ping, { from: client.sessionId, name, preset: msg.preset, point: msg.point });
     });
     this.on(MSG.away, awaySchema, (client, msg) => this.kitchen?.setAway(client.sessionId, msg.away));
+    if (this.deps.config.testHooks) {
+      // Automated browser tests only; config refuses this flag in production.
+      this.on("debugTeleport", debugTeleportSchema, (client, msg) => this.kitchen?.debugPlacePlayer(client.sessionId, { x: msg.x, y: 0, z: msg.z }, msg.yaw, msg.pitch));
+    }
   }
 }

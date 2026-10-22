@@ -12,6 +12,8 @@ export interface ServerConfig {
   maxRooms: number;
   trustProxy: boolean;
   logLevel: "debug" | "info" | "warn" | "error";
+  /** Test-only hooks (teleport) for automated browser tests. Refused in production. */
+  testHooks: boolean;
 }
 
 function bool(value: string | undefined, fallback: boolean): boolean {
@@ -37,6 +39,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (production && !databaseUrl && !bool(env.ALLOW_MEMORY_STORE, false)) {
     throw new Error("DATABASE_URL is required in production (set ALLOW_MEMORY_STORE=1 only for throwaway demos)");
   }
+  const testHooks = bool(env.ENABLE_TEST_HOOKS, false);
+  if (production && testHooks) throw new Error("ENABLE_TEST_HOOKS must never be set in production");
   const level = (env.LOG_LEVEL ?? "info") as ServerConfig["logLevel"];
   return {
     production,
@@ -48,5 +52,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     maxRooms: Number(env.MAX_ROOMS ?? 20),
     trustProxy: bool(env.TRUST_PROXY, production),
     logLevel: ["debug", "info", "warn", "error"].includes(level) ? level : "info",
+    testHooks,
   };
 }
