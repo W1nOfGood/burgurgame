@@ -1,0 +1,20 @@
+{
+  "name": "@ahb/simulation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@ahb/data": "0.1.0",
+    "@dimforge/rapier3d-compat": "0.21.0"
+  }
+}
