@@ -107,6 +107,46 @@ describe("movement over a long, jittery route", () => {
     expect(worst).toBeLessThan(1e-9);
   });
 
+  it("judges reach from where the player was when they acted, not where the queue has got to", () => {
+    const { k, state, s } = setup();
+    // Walk toward the island, the samples arriving in one late burst, then grab at once.
+    const tray = [...state.items.entries()].find(([, it]) => it.kind === "tray")!;
+    const [trayId, t] = tray;
+    const client = new PlayerMotor(createPhysicsWorld(R, DT), { x: s.x, y: s.y, z: s.z });
+    const yaw = Math.atan2(t.x - s.x, t.z - s.z);
+    const samples: MoveSample[] = [];
+    // Up to ~1.8 s of walking, all of it still queued on the server (within its 2 s buffer).
+    for (let i = 0; i < 110; i++) {
+      const smp = { seq: i + 1, mx: 0, mz: 1, yaw, pitch: 0.6, buttons: 0 };
+      client.step(smp, DT, 1);
+      samples.push(smp);
+      if (Math.hypot(client.state.x - t.x, client.state.z - t.z) < 0.7) break;
+    }
+    for (let i = 0; i < samples.length; i += NET.maxSamplesPerMessage) k.pushInput("p1", { samples: samples.slice(i, i + NET.maxSamplesPerMessage) } as never);
+    const res = k.grabItem("p1", trayId, t.rev);
+    expect(res).toEqual({ ok: true });
+    expect(Math.hypot(s.x - client.state.x, s.z - client.state.z)).toBeLessThan(1e-9);
+  });
+
+  it("keeps every player exact when several move at once", () => {
+    const { k } = setup();
+    const s2 = k.addPlayer("p2", { name: "Nok", platform: "desktop" });
+    const s1 = (k as unknown as { players: Map<string, { s: { x: number; y: number; z: number } }> }).players.get("p1")!.s;
+    const c1 = new PlayerMotor(createPhysicsWorld(R, DT), { x: s1.x, y: s1.y, z: s1.z });
+    const c2 = new PlayerMotor(createPhysicsWorld(R, DT), { x: s2.x, y: s2.y, z: s2.z });
+    const a = walk(600);
+    const b = walk(600).map((m, i) => ({ ...m, yaw: -m.yaw + Math.sin(i / 37) * 2, mx: -m.mx }));
+    for (let i = 0; i < 600; i++) {
+      c1.step(a[i]!, DT, 1);
+      c2.step(b[i]!, DT, 1);
+      k.pushInput("p1", { samples: [a[i]!] } as never);
+      k.pushInput("p2", { samples: [b[i]!] } as never);
+      k.step(DT);
+    }
+    for (let i = 0; i < 30; i++) k.step(DT);
+    for (const [s, c] of [[s1, c1.state], [s2, c2.state]] as const) expect(Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z)).toBeLessThan(1e-9);
+  });
+
   it("still cannot be made to move faster than real time", () => {
     const { k } = setup();
     const motor = (k as unknown as { players: Map<string, { motor: PlayerMotor }> }).players.get("p1")!.motor;

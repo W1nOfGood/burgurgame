@@ -949,7 +949,7 @@ export class RestaurantView {
     ctx.font = "bold 46px Georgia, serif";
     ctx.textAlign = "center";
     ctx.fillText(name || "After Hours Burger", w / 2, 58);
-    const recipes = Object.values(RECIPES).filter((r) => r.enabled);
+    const recipes = Object.values(RECIPES).filter((r) => r.enabled && !r.tutorialOnly);
     const perCol = Math.ceil(recipes.length / 2);
     ctx.font = "25px Georgia, serif";
     recipes.forEach((r, i) => {

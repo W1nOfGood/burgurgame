@@ -19,6 +19,7 @@ import {
   pingSchema,
   placeSchema,
   shiftSchema,
+  tutorialSchema,
   spatulaSchema,
   squeezeSchema,
   type JoinOptions,
@@ -199,6 +200,8 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
       // A resumed restaurant starts paused so nothing burns before the team is ready.
       if (snap.phase !== "prep") kitchen.pause("Restored from save — resume when ready");
     }
+    // A brand-new restaurant will start with the tutorial once the client's coach ships
+    // (kitchen.startTutorial()); until then the tutorial stays off.
     this.kitchen = kitchen;
     this.lastSavedAt = Date.now();
     log.info("restaurant opened", { room: this.roomId, restaurant: restaurantId, restored: Boolean(checkpoint) });
@@ -457,6 +460,7 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     this.on(MSG.offer, offerSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.offer(client.sessionId, msg.to)));
     this.on(MSG.spatula, spatulaSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.spatula(client.sessionId, msg.action, msg.item, msg.rev)));
     this.on(MSG.shift, shiftSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.shiftSwitch(client.sessionId, msg.action)));
+    this.on(MSG.tutorial, tutorialSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.tutorial(client.sessionId, msg.action)));
     this.on(MSG.pause, pauseSchema, (client, msg) =>
       this.command(client, msg.cmd, (k) =>
         msg.action === "request" ? k.requestPause(client.sessionId) : msg.action === "resume" ? k.requestResume(client.sessionId) : k.cancelPauseVote(client.sessionId),

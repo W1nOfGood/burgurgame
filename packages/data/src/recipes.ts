@@ -1,6 +1,7 @@
 import type { ItemKind, SauceKind } from "./items.js";
 
 export type RecipeId =
+  | "starter"
   | "classic_cheeseburger"
   | "hamburger"
   | "double_cheeseburger"
@@ -33,6 +34,8 @@ export interface RecipeDef {
   /** Short flavour line for the menu board and recipe book. */
   blurb: string;
   enabled: boolean;
+  /** Only ordered by the tutorial's first customer, never at random. */
+  tutorialOnly?: boolean;
 }
 
 const r = (def: Omit<RecipeDef, "enabled">): RecipeDef => ({ ...def, enabled: true });
@@ -42,6 +45,16 @@ const r = (def: Omit<RecipeDef, "enabled">): RecipeDef => ({ ...def, enabled: tr
  * in the office and menu is there for lookups and learning).
  */
 export const RECIPES: Record<RecipeId, RecipeDef> = {
+  starter: r({
+    id: "starter",
+    label: "Starter Burger",
+    layers: ["bun_bottom", "patty", "bun_top"],
+    sauces: [],
+    priceCents: 500,
+    tier: 1,
+    blurb: "Bun, patty, bun. Everyone's first.",
+    tutorialOnly: true,
+  }),
   classic_cheeseburger: r({
     id: "classic_cheeseburger",
     label: "Classic Cheeseburger",

@@ -1,4 +1,5 @@
 import type { ItemKind } from "./items.js";
+import { DRINKS_ENABLED } from "./drinks.js";
 
 /**
  * Restaurant layout in metres. +Y is up, the kitchen is toward +Z, the dining room and street
@@ -112,6 +113,8 @@ export const BOXES: readonly LayoutBox[] = [
   { id: "sink", center: [-5.6, 0.46, 2.2], half: [0.4, 0.46, 0.6], material: "stainless", collide: true },
   { id: "trash", center: [2.4, 0.4, 2.2], half: [0.22, 0.4, 0.22], material: "dark_metal", collide: true },
   { id: "drinks", center: [5.0, 0.5, 1.0], half: [0.9, 0.5, 0.35], material: "stainless", collide: true },
+  // Drip tray and the strip in front of the fountain tower: cups stand here to fill.
+  { id: "drink_station", center: [5.0, 1.015, 1.235], half: [0.88, 0.015, 0.115], material: "stainless", collide: true, surface: "counter" },
 
   // Dining room
   { id: "table_1", center: [-3.5, 0.37, -3.0], half: [0.45, 0.37, 0.45], material: "timber", collide: true, surface: "counter" },
@@ -178,6 +181,13 @@ export const DISPENSERS: readonly Dispenser[] = [
   { id: "drawer_patty", kind: "patty", center: [-1.8, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
   { id: "drawer_veggie", kind: "veggie_patty", center: [-1.4, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
   { id: "tray_stack", kind: "tray", center: [-1.95, 0.95, 2.2], half: [0.22, 0.05, 0.17] },
+  // Cup stacks either side of the fountain (sleeves on the cabinet top).
+  ...(DRINKS_ENABLED
+    ? ([
+        { id: "cups_west", kind: "cup", center: [4.18, 1.21, 1.15], half: [0.06, 0.21, 0.06] },
+        { id: "cups_east", kind: "cup", center: [5.82, 1.21, 1.15], half: [0.06, 0.21, 0.06] },
+      ] as const)
+    : []),
 ];
 
 /** Areas where placement is refused even though they sit on a surface (bin openings). */

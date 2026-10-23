@@ -532,6 +532,68 @@ def bottle(t, kind: str, sauce: str) -> bpy.types.Object:
     return bl.join([body, cap, band], kind)
 
 
+def cup(t) -> bpy.types.Object:
+    """16 oz paper cup, open so the drink shows (the client fills it): tapered wall with a rolled
+    rim, a thin inner wall and a printed band."""
+    d = ITEMS["cup"]["shape"]
+    R, H = d["radius"], d["halfHeight"]
+    rb = R * 0.74  # base radius
+    wall = [(0.0, -H), (rb - 0.002, -H), (rb, -H + 0.003), (R - 0.0015, H - 0.004), (R + 0.0012, H - 0.0035), (R + 0.0016, H - 0.0012), (R, H), (R - 0.0022, H - 0.0016), (R - 0.0026, H - 0.004), (rb - 0.0012, -H + 0.007), (0.0, -H + 0.007)]
+    body = bl.lathe("cup_body", wall, (0, 0, 0), t["cup_paper"], segments=40, smooth_angle=60)
+    z0, z1 = -H + 0.016, H - 0.022
+
+    def r_at(z: float) -> float:
+        return rb + (R - 0.0015 - rb) * (z - (-H + 0.003)) / ((H - 0.004) - (-H + 0.003)) + 0.0005
+
+    band = bl.lathe("cup_print", [(r_at(z0), z0), (r_at(z1), z1)], (0, 0, 0), t["cup_print"], segments=40, smooth_angle=80)
+    me = band.data
+    uv = me.uv_layers.new(name="UVMap").data
+    for poly in me.polygons:
+        ths = [math.atan2(me.vertices[me.loops[li].vertex_index].co.y, me.vertices[me.loops[li].vertex_index].co.x) for li in poly.loop_indices]
+        ref = ths[0]
+        for li, a in zip(poly.loop_indices, ths):
+            if a - ref > math.pi:
+                a -= 2 * math.pi
+            elif ref - a > math.pi:
+                a += 2 * math.pi
+            co = me.vertices[me.loops[li].vertex_index].co
+            base = (ref / (2 * math.pi)) % 1.0
+            uv[li].uv = (base + (a - ref) / (2 * math.pi), (co.z - z0) / (z1 - z0))
+    bl.ensure_uv(body)
+    return bl.join([body, band], "cup")
+
+
+def cup_print() -> str:
+    """Printed cup wall: diner red bands, the name twice round, small stars."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    from ahb.graphics import BLACK, SEMI
+
+    os.makedirs(os.path.join(BUILD, "food"), exist_ok=True)
+    W, H = 1024, 256
+    im = Image.new("RGB", (W, H), (247, 244, 236))
+    d = ImageDraw.Draw(im)
+    red = (186, 28, 30)
+    d.rectangle([0, 0, W, 34], fill=red)
+    d.rectangle([0, H - 30, W, H], fill=red)
+    d.rectangle([0, 44, W, 50], fill=red)
+    d.rectangle([0, H - 44, W, H - 40], fill=red)
+    for x0 in (0, W // 2):
+        f = ImageFont.truetype(BLACK, 64)
+        tw = d.textlength("AFTER", font=f)
+        d.text((x0 + (W // 2 - tw) / 2, 58), "AFTER", font=f, fill=(30, 26, 24))
+        f2 = ImageFont.truetype(SEMI, 34)
+        tw = d.textlength("H O U R S", font=f2)
+        d.text((x0 + (W // 2 - tw) / 2, 136), "H O U R S", font=f2, fill=red)
+        for sx in (0.12, 0.88):
+            cx, cy, r = x0 + W // 2 * sx, 112, 12
+            pts = [(cx + (r if k % 2 == 0 else r * 0.45) * math.cos(math.pi / 2 + k * math.pi / 5), cy - (r if k % 2 == 0 else r * 0.45) * math.sin(math.pi / 2 + k * math.pi / 5)) for k in range(10)]
+            d.polygon(pts, fill=red)
+    p = os.path.join(BUILD, "food", "cup_print.png")
+    im.save(p)
+    return p
+
+
 # ----------------------------------------------------------------------------------------------
 
 
@@ -564,6 +626,8 @@ def materials() -> dict:
     t["tray"] = bl.solid("tray_plastic", (0.62, 0.06, 0.04), 0.32)
     t["sauce"] = bl.solid("food_sauce", (1.0, 1.0, 1.0), 0.1, coat=0.6)
     t["liner"] = pbr_tex("tray_liner", ft["liner"], rough=0.9)
+    t["cup_paper"] = bl.solid("cup_paper", (0.95, 0.94, 0.91), 0.55)
+    t["cup_print"] = pbr_tex("cup_print", cup_print(), rough=0.5)
     t["steel"] = material("steel")
     t["walnut"] = material("walnut_slats", "walnut_handle")
     t["brass"] = bl.solid("brass", (0.83, 0.66, 0.4), 0.28, 1.0)
@@ -618,6 +682,7 @@ def build() -> list[bpy.types.Object]:
         egg(t),
         mushrooms(t),
         tray(t),
+        cup(t),
         spatula(t),
         sauce_drizzle(t),
     ]

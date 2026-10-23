@@ -86,6 +86,8 @@ export const ItemState = schema(
     root: t.string().default(""),
     /** Sauces applied to this layer (SAUCE_BIT flags). */
     sauceMask: t.uint8().default(0),
+    /** Cups: drink code (data/drinks.ts drinkCode; 0 empty). The fill is in `level`. */
+    drink: t.uint8().default(0),
   },
   "ItemState",
 );
@@ -113,6 +115,8 @@ export const OrderState = schema(
     score: t.uint8().default(0),
     /** Name of the customer who ordered ("" for tickets without a walk-in customer). */
     customer: t.string().default(""),
+    /** Drink served with the burger (DrinkId), or "". */
+    drink: t.string().default(""),
   },
   "OrderState",
 );
@@ -175,6 +179,8 @@ export const RestaurantState = schema(
     /** Session ids voting for a co-op pause. */
     pauseVotes: t.array("string"),
     customers: t.map(CustomerState),
+    /** The starting tutorial is running (one easy burger and a cola, then the normal shift). */
+    tutorial: t.boolean().default(false),
   },
   "RestaurantState",
 );

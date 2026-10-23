@@ -54,6 +54,7 @@ import type { Session } from "../net/session.js";
 import { PoseSmoother, ServerClock, SnapshotBuffer, yawOfPose, type Pose } from "../net/interp.js";
 import { isTouchDevice, saveSettings, type Settings } from "../settings.js";
 import type { Ui } from "../ui/ui.js";
+import { NetStats } from "../ui/netStats.js";
 import { AudioEngine, type Sfx } from "./audio.js";
 import { FirstPersonHands } from "./hands.js";
 import { InputManager, type Action } from "./input.js";
@@ -173,6 +174,7 @@ export class Game {
     maxDelayMs: NET.maxInterpolationDelayMs,
   });
   private readonly stepper = new FixedStepper(NET.tickHz, NET.maxCatchUpSteps);
+  private readonly net = new NetStats((cb) => this.session.room.ping(cb));
   private yaw = 0;
   private pitch = 0.15;
   private hold: number = INTERACTION.holdDistanceDefault;
@@ -317,6 +319,7 @@ export class Game {
 
     document.addEventListener("visibilitychange", this.onVisibility);
     window.addEventListener("resize", this.onResize);
+    window.addEventListener("keydown", this.onNetKey);
     window.visualViewport?.addEventListener("resize", this.onResize);
     engine.onContextLostObservable.add(() => this.ui.setBanner("Graphics paused — restoring…"));
     engine.onContextRestoredObservable.add(() => this.ui.setBanner(null));
@@ -394,11 +397,30 @@ export class Game {
     this.engine.resize();
   }
 
+  /**
+   * Sends every movement step simulated so far. The local player has already moved by them, so
+   * they must reach the server: dropping them (as opening a menu or hiding the tab used to) left
+   * the server behind the prediction and pulled the player back.
+   */
+  private flushInput(): void {
+    while (this.local.outboxSize > 0) {
+      const samples = this.local.drainOutbox(NET.maxSamplesPerMessage);
+      this.session.sendInput({ samples, hold: this.hold, rotYaw: this.rotYaw, rotPitch: this.rotPitch });
+    }
+  }
+
+  private onNetKey = (e: KeyboardEvent): void => {
+    if (e.code === "F3") {
+      e.preventDefault();
+      this.net.toggle();
+    }
+  };
+
   setMenuOpen(open: boolean): void {
     this.menuOpen = open;
     this.input.enabled = !open;
     this.input.clear();
-    this.local.clearOutbox();
+    this.flushInput();
     this.touch?.reset();
     this.touch?.setVisible(!open);
     this.endCapture();
@@ -410,7 +432,7 @@ export class Game {
     if (document.hidden) {
       // Backgrounded / screen locked: clear movement and manipulation input.
       this.input.clear();
-      this.local.clearOutbox();
+      this.flushInput();
       this.endCapture();
       this.session.sendControl(MSG.away, { away: true });
       void this.audio.suspend();
@@ -431,6 +453,8 @@ export class Game {
     this.disposed = true;
     document.removeEventListener("visibilitychange", this.onVisibility);
     window.removeEventListener("resize", this.onResize);
+    window.removeEventListener("keydown", this.onNetKey);
+    this.net.dispose();
     window.visualViewport?.removeEventListener("resize", this.onResize);
     this.input.enabled = false;
     this.input.releaseLock();
@@ -461,6 +485,7 @@ export class Game {
         } else {
           const heldKind = this.heldKind();
           this.local.reconcile(p, 1 / NET.tickHz, heldKind === "tray" ? PLAYER.carrySpeedFactor : 1);
+          this.net.correction(this.local.lastError);
         }
         if (p.held !== this.lastHeldServer) {
           this.lastHeldServer = p.held;
@@ -615,10 +640,7 @@ export class Game {
     this.sendAccumulator += dtMs;
     if (this.sendAccumulator >= 1000 / NET.inputSendHz) {
       this.sendAccumulator %= 1000 / NET.inputSendHz;
-      while (this.local.outboxSize > 0) {
-        const samples = this.local.drainOutbox(NET.maxSamplesPerMessage);
-        this.session.sendInput({ samples, hold: this.hold, rotYaw: this.rotYaw, rotPitch: this.rotPitch });
-      }
+      this.flushInput();
     }
     this.flushControls(dtMs);
 
@@ -649,6 +671,9 @@ export class Game {
       sm.smooth.apply(TMP_POSE, dt);
       const label = `${p.name}${p.platform === "touch" ? " · tablet" : ""}${p.away ? " · away" : ""}${p.admin ? " ★" : ""}`;
       av.update(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, yawOfPose(TMP_POSE), p.pitch, p.crouch, p.held !== "", label, !p.connected);
+      // Players pass through each other: a teammate standing where you stand would fill the
+      // view from inside their clothes, so they step out of sight until you separate.
+      av.root.setEnabled(Math.hypot(TMP_POSE.x - camPos.x, TMP_POSE.z - camPos.z) > 0.45);
     }
 
     // Customers: poses come from their replicated phase and the render clock.
@@ -770,6 +795,17 @@ export class Game {
         this.markers.splice(this.markers.indexOf(mk), 1);
       }
     }
+    this.net.frame({
+      connected: this.session.connected,
+      reconnecting: this.session.room.reconnection.isReconnecting,
+      paused: state.paused ? state.pauseReason || "paused" : null,
+      menuOpen: this.menuOpen,
+      serverTick: state.tick,
+      renderDelayMs: (this.clock.delayTicks * 1000) / NET.tickHz,
+      jitterMs: (this.clock.jitterTicks * 1000) / NET.tickHz,
+      pendingInputs: this.local.pendingCount,
+      fps: this.engine.getFps(),
+    });
     this.updateHud(now);
   }
 
