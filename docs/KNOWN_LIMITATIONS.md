@@ -14,9 +14,12 @@ Honest status against the specification. Nothing below is claimed as done.
 - **VPS deployment** has not been performed on your server. The Docker image, Compose stack,
   migrations, health checks, backup and a restore into a clean database were exercised locally.
   The Nginx/DirectAdmin configuration is an example to validate on the real host.
-- **Two independent networks**, latency/jitter/packet-loss tests and **multi-room load tests**
-  have not been run, so no player or room capacity is promised. `MAX_ROOMS` defaults to 20 as a
-  conservative guard until measured.
+- **Two independent networks** and **multi-room load tests** have not been run, so no player
+  or room capacity is promised. `MAX_ROOMS` defaults to 20 as a conservative guard until
+  measured. Long-route latency and jitter (a Thailand client on a US server) are covered by
+  simulated tests of the server input queue and the client interpolation, not by play over a
+  real intercontinental link. Everything you do still waits one round trip for the server's
+  answer; a server in your region (Singapore for Thailand) is the real fix for that.
 
 ## Not built yet
 

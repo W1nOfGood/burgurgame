@@ -1210,6 +1210,7 @@ export class Kitchen {
         p.s.vx = m.vx;
         p.s.vy = m.vy;
         p.s.vz = m.vz;
+        p.s.grounded = m.grounded;
       }
       if (p.s.hold !== p.hold) p.s.hold = p.hold;
     }
@@ -1693,10 +1694,12 @@ export class Kitchen {
   debugPlacePlayer(sessionId: string, pos: V3, yaw: number, pitch: number): void {
     const p = this.players.get(sessionId);
     if (!p) return;
-    p.motor.reset({ ...pos, vx: 0, vy: 0, vz: 0 });
+    p.motor.reset({ ...pos, vx: 0, vy: 0, vz: 0, grounded: true });
     p.s.x = pos.x;
     p.s.y = pos.y;
     p.s.z = pos.z;
+    p.s.vx = p.s.vy = p.s.vz = 0;
+    p.s.grounded = true;
     p.s.yaw = yaw;
     p.s.pitch = pitch;
   }

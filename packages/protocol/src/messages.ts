@@ -5,7 +5,7 @@ import { INTERACTION, NET } from "@ahb/data";
  * Client → server intents. TypeScript types do not validate untrusted network input, so every
  * message is checked with these runtime schemas at the server boundary (spec §3, §14).
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const MSG = {
   input: "input",

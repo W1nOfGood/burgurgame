@@ -1,3 +1,4 @@
+import { NET } from "@ahb/data";
 import { PlayerMotor, createPhysicsWorld, type MoveSample, type PhysicsWorld, type Rapier, type V3 } from "@ahb/simulation";
 
 /**
@@ -26,7 +27,9 @@ export class LocalPlayer {
     this.pending.push(s);
     this.outbox.push(s);
     if (this.pending.length > 240) this.pending.splice(0, this.pending.length - 240);
-    if (this.outbox.length > 30) this.outbox.splice(0, this.outbox.length - 30);
+    // Every sample simulated here must reach the server (a dropped one becomes a correction),
+    // so only an outbox the server could not accept anyway (2 s) is trimmed.
+    if (this.outbox.length > NET.maxQueuedSamples) this.outbox.splice(0, this.outbox.length - NET.maxQueuedSamples);
     return s;
   }
 
@@ -40,10 +43,10 @@ export class LocalPlayer {
   }
 
   /** Reapplies authoritative state and replays samples the server hasn't processed yet. */
-  reconcile(server: { x: number; y: number; z: number; vx: number; vy: number; vz: number; ack: number }, dt: number, speedFactor: number): void {
+  reconcile(server: { x: number; y: number; z: number; vx: number; vy: number; vz: number; grounded: boolean; ack: number }, dt: number, speedFactor: number): void {
     const before = { ...this.motor.state };
     while (this.pending.length > 0 && this.pending[0]!.seq <= server.ack) this.pending.shift();
-    this.motor.reset({ x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, grounded: true });
+    this.motor.reset({ x: server.x, y: server.y, z: server.z, vx: server.vx, vy: server.vy, vz: server.vz, grounded: server.grounded });
     for (const s of this.pending) this.motor.step(s, dt, speedFactor);
     const after = this.motor.state;
     const ex = before.x - after.x;

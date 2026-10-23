@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { NET, type StockKey } from "@ahb/data";
+import { NET, PLAYER, type StockKey } from "@ahb/data";
 import { PlayerMotor, createPhysicsWorld, initPhysics, type MoveSample, type Rapier } from "@ahb/simulation";
+import { Decoder, Encoder } from "@colyseus/schema";
 import { RestaurantState } from "@ahb/protocol";
 import { Kitchen, type KitchenHooks } from "./kitchen.js";
 
@@ -16,6 +17,7 @@ beforeAll(async () => {
 });
 
 const DT = 1 / NET.tickHz;
+const PLAYER_WALK = PLAYER.walkSpeed;
 
 function setup() {
   const state = new RestaurantState();
@@ -63,6 +65,46 @@ describe("movement over a long, jittery route", () => {
     const c = client.state;
     // Not just close: the server's motor world holds exactly what the client predicts against.
     expect(Math.hypot(s.x - c.x, s.y - c.y, s.z - c.z)).toBeLessThan(1e-9);
+  });
+
+  it("lets a reconciling client land exactly on its own prediction, even sliding along walls", () => {
+    const { k, state, client } = setup();
+    // The client's reconcile: reset a motor to the decoded patch, replay what is unacknowledged.
+    const replay = new PlayerMotor(createPhysicsWorld(R, DT), { x: 0, y: 0, z: 0 });
+    const encoder = new Encoder(state);
+    // Forward with a wide sweep of the view: the walk runs into counters and slides along them.
+    const samples: MoveSample[] = [];
+    for (let i = 0; i < 900; i++) {
+      const t = i / NET.tickHz;
+      samples.push({ seq: i + 1, mx: Math.sin(t * 0.9) * 0.4, mz: 1, yaw: Math.PI + Math.sin(t * 0.5) * 2.2, pitch: 0, buttons: i % 300 < 150 ? 2 : 0 });
+    }
+    const inflight: { at: number; smp: MoveSample }[] = [];
+    let sent = 0;
+    let worst = 0;
+    let slid = 0;
+    for (let tick = 0; tick < samples.length + 60; tick++) {
+      if (sent < samples.length) {
+        const smp = samples[sent++]!;
+        const before = { ...client.state };
+        const m = client.step(smp, DT, 1);
+        const wanted = Math.hypot(m.vx, m.vz) > 0 ? 1 : 0;
+        if (wanted && Math.hypot(m.x - before.x, m.z - before.z) < 0.9 * PLAYER_WALK * DT) slid++;
+        inflight.push({ at: tick + 14 + (tick % 7), smp });
+      }
+      while (inflight.length && inflight[0]!.at <= tick) k.pushInput("p1", { samples: [inflight.shift()!.smp] } as never);
+      k.step(DT);
+      if (tick % 3 !== 0) continue;
+      const decoded = new RestaurantState();
+      new Decoder(decoded).decode(encoder.encodeAll());
+      const ps = decoded.players.get("p1")!;
+      replay.reset({ x: ps.x, y: ps.y, z: ps.z, vx: ps.vx, vy: ps.vy, vz: ps.vz, grounded: ps.grounded });
+      for (const smp of samples.slice(ps.ack, sent)) replay.step(smp, DT, 1);
+      const c = client.state;
+      const r = replay.state;
+      worst = Math.max(worst, Math.hypot(r.x - c.x, r.y - c.y, r.z - c.z));
+    }
+    expect(slid).toBeGreaterThan(30); // the walk really did scrape along geometry
+    expect(worst).toBeLessThan(1e-9);
   });
 
   it("still cannot be made to move faster than real time", () => {

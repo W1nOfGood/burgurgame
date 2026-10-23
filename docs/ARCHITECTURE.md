@@ -50,13 +50,28 @@ their rate of change.
 - 60 Hz fixed step (`setFixedTimestep`, bounded catch-up), 20 Hz state patches.
 - Clients simulate movement locally at 60 Hz with the same Rapier build and motor and send
   ~30 input messages per second, each carrying the samples since the last (≤ 6). The server
-  consumes one sample per tick per player with a small catch-up credit (bounded queue of 12;
-  stale input cleared after 250 ms; no speed-up beyond real time on average).
-- Each patch carries the last processed sequence (`ack`) and the player's velocity; the client
-  resets its motor to the server state and replays unacknowledged samples. Small errors are
-  smoothed; corrections over 0.5 m (teleports, restores) snap.
-- Remote players and items are interpolated by server tick ~100 ms behind (delay adapts to
-  observed underruns).
+  runs **every** sample a client simulated: on long routes input arrives in bursts after
+  stalls, so the per-player queue holds 2 s (`NET.maxQueuedSamples`) and a long queue is worked
+  off at up to 4 samples per tick. A per-player credit (one sample per tick, capped at the
+  queue size) keeps any client from moving faster than real time.
+- Player motors run in their own physics world that holds only the static kitchen, exactly
+  the world the client predicts against, so the same inputs give bit-identical results on both
+  sides (`apps/server/src/room/latency.test.ts`). Loose items live in the main world.
+- Each patch carries the last processed sequence (`ack`), the player's position and velocity
+  at full (64-bit) precision and its ground contact; the client resets its motor to exactly
+  that state and replays unacknowledged samples, so a correction only appears when the server
+  really did something else. (32-bit positions were off by up to 30 cm after a replay along a
+  wall.) Small errors are smoothed; corrections over 0.5 m (teleports, restores) snap.
+- Remote players and items are interpolated by server tick. The render delay is one patch
+  interval plus the recent peak arrival jitter (100–500 ms, `NET.interpolationDelayMs` to
+  `NET.maxInterpolationDelayMs`): it rises within a fraction of a second when patches start
+  arriving late and eases back over seconds, so playback slows or speeds up slightly instead
+  of freezing. A patch that is still late is covered by up to 100 ms of extrapolation, and the
+  correction when it lands is faded in (`apps/client/src/net/interp.ts`).
+- Your own pick-ups and put-downs are predicted: a grabbed item flies into your hand at once,
+  and a placed or set-down item stays where you put it until the delayed view reaches the
+  server patch that confirms it, then blends to the server's pose. A rejection undoes the
+  prediction immediately.
 - Cooking values are quantised to bytes before replication, so patches are sent only when the
   visible state changes. Food appearance on clients is a function of those values only.
 
