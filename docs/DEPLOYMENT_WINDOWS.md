@@ -38,7 +38,7 @@ opened. Folders:
 - Windows Server 2022 or 2025 (Desktop Experience or Core). Suggested starting size: 2 vCPU,
   **4 GB RAM** (Windows and the client build need more than Linux), 40 GB disk.
 - A domain with two DNS **A records** pointing at the VPS IP:
-  - `game.example.com`, the website players open
+  - `burgurgame.example.com`, the website players open
   - `realtime.example.com`, the game service (WebSockets and API)
 - Remote Desktop (or SSH) as an administrator. Open **Windows PowerShell as Administrator**
   (Start → type `powershell` → right-click → *Run as administrator*). Run steps 1–5 in **one
@@ -125,7 +125,7 @@ PORT=2567
 TRUST_PROXY=1
 DATABASE_URL=postgres://afterhours:$dbPass@127.0.0.1:5432/afterhours
 GUEST_TOKEN_SECRET=$token
-ALLOWED_ORIGINS=https://game.$domain
+ALLOWED_ORIGINS=https://burgurgame.$domain
 MAX_ROOMS=20
 LOG_LEVEL=info
 "@ | Set-Content -Encoding ASCII -Path C:\after-hours-data\game.env
@@ -220,13 +220,13 @@ Get-Content C:\caddy\logs\caddy.log -Tail 20 -Wait     # watch "certificate obta
 
 ```powershell
 cd C:\after-hours
-.\scripts\windows\smoke.ps1 "https://realtime.$domain" "https://game.$domain"
+.\scripts\windows\smoke.ps1 "https://realtime.$domain" "https://burgurgame.$domain"
 ```
 
 `smoke.ps1` also works from your own PC (any machine with PowerShell). Then do the real test,
 because a service starting does not prove multiplayer works:
 
-1. Open `https://game.example.com` on a computer, enter a name, **Open kitchen**. Note the
+1. Open `https://burgurgame.example.com` on a computer, enter a name, **Open kitchen**. Note the
    6-letter room code (top-left).
 2. On a phone hotspot or another network, open the same site on an iPad (or a second browser),
    enter the code and **Join**.
@@ -328,7 +328,7 @@ treat these as the things to set up rather than exact clicks.
    ```
 
 2. **Two sites** (in Plesk: two domains or subdomains):
-   - `game.example.com`, physical path `C:\www\after-hours`. Copy
+   - `burgurgame.example.com`, physical path `C:\www\after-hours`. Copy
      [`deploy/windows/iis-client.web.config`](../deploy/windows/iis-client.web.config) there as
      `web.config` (the glTF/WebP/model types IIS doesn't know, and the cache rules).
      `update.ps1` leaves it in place.
