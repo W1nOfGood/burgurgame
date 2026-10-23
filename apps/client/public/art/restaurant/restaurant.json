@@ -4,19 +4,19 @@
   "kitchen": {
    "lightmap": "lm_kitchen.webp",
    "ao": "ao_kitchen.webp",
-   "scale": 2.9231,
+   "scale": 2.9285,
    "size": 2048
   },
   "dining": {
    "lightmap": "lm_dining.webp",
    "ao": "ao_dining.webp",
-   "scale": 3.2779,
+   "scale": 3.3755,
    "size": 2048
   },
   "exterior": {
    "lightmap": "lm_exterior.webp",
    "ao": "ao_exterior.webp",
-   "scale": 2.5145,
+   "scale": 2.5231,
    "size": 1024
   }
  },
@@ -60,5 +60,5 @@
    ]
   }
  },
- "generated": "2026-10-22"
+ "generated": "2026-10-23"
 }
