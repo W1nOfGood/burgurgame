@@ -5,7 +5,7 @@ import { INTERACTION, NET } from "@ahb/data";
  * Client → server intents. TypeScript types do not validate untrusted network input, so every
  * message is checked with these runtime schemas at the server boundary (spec §3, §14).
  */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const MSG = {
   input: "input",
@@ -22,6 +22,7 @@ export const MSG = {
   pause: "pause",
   ping: "ping",
   away: "away",
+  tutorial: "tutorial",
 } as const;
 
 export const SERVER_MSG = {
@@ -97,6 +98,8 @@ export const squeezeSchema = z.object({ target: id, intensity: finite(0, 1) });
 export const shiftSchema = z.object({ cmd, action: z.enum(["open", "close"]) });
 
 export const pauseSchema = z.object({ cmd, action: z.enum(["request", "resume", "cancel"]) });
+
+export const tutorialSchema = z.object({ cmd, action: z.enum(["start", "skip"]) });
 
 export const PING_PRESETS = ["need_patties", "need_buns", "on_grill", "order_up", "help", "thanks"] as const;
 export const pingSchema = z.object({ cmd, preset: z.enum(PING_PRESETS), point: point.optional() });

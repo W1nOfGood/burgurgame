@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { CUSTOMER_LOOKS, DISPENSERS, ITEM_KINDS } from "@ahb/data";
+import { CUSTOMER_LOOKS, DISPENSERS, DRINKS_ENABLED, ITEM_KINDS } from "@ahb/data";
 
 /**
  * Guards the Blender-built art shipped in apps/client/public/art (docs/ASSET_PIPELINE.md):
@@ -58,7 +58,8 @@ describe("authored art", () => {
 
   it("food: every gameplay item kind has an authored model, plus the sauce drizzle", () => {
     const nodes = names(gltf("food.gltf"));
-    for (const kind of ITEM_KINDS) expect(nodes.has(kind), `food model for ${kind}`).toBe(true);
+    // The cup's model ships with the drinks (DRINKS_ENABLED).
+    for (const kind of ITEM_KINDS) if (kind !== "cup" || DRINKS_ENABLED) expect(nodes.has(kind), `food model for ${kind}`).toBe(true);
     expect(nodes.has("sauce_drizzle")).toBe(true);
     for (const t of ["beef_seared", "beef_cook", "bun_toasted", "bacon_crisp", "mushroom_seared", "egg_white_set"]) {
       expect(existsSync(join(ART, "food", `${t}.webp`)), t).toBe(true);
@@ -69,7 +70,8 @@ describe("authored art", () => {
     const nodes = names(gltf("props.gltf"));
     for (const n of ["knob", "drawer", "tray_stack", "switch_plate", "switch_lever", "open_sign"]) expect(nodes.has(n), n).toBe(true);
     for (const d of DISPENSERS) {
-      if (d.requiresDrawer !== undefined || d.kind === "tray") continue;
+      // Trays and cups come from stacks modelled with the restaurant, not from pans.
+      if (d.requiresDrawer !== undefined || d.kind === "tray" || d.kind === "cup") continue;
       expect(nodes.has(`bin_${d.id}`) || nodes.has(d.id), `pan for ${d.id}`).toBe(true);
     }
   });
