@@ -45,7 +45,10 @@ Set-Location -LiteralPath (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $svc = Get-Service -Name $Service -ErrorAction SilentlyContinue
 if ($svc) {
     Write-Step "Stopping $Service"
-    Stop-Service -Name $Service
+    $state = Stop-ServiceRobust -Name $Service
+    if ($state -ne 'Stopped') {
+        throw "$Service did not stop (it is '$state'); nothing was restored. See 'Stuck in Stop pending' in docs/DEPLOYMENT_WINDOWS.md."
+    }
 }
 Write-Step "Restoring $File"
 Invoke-Native $pgRestore @("--dbname=$db", '--clean', '--if-exists', '--no-owner', $File)

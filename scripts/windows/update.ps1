@@ -43,12 +43,20 @@ if (Test-Path -LiteralPath $stamp) {
     $installed = (Get-Content -LiteralPath $stamp -Raw).Trim()
 }
 
+# Stops the game service, waiting for its process to exit (and ending it if it hangs).
+function Stop-Game {
+    Write-Step "Stopping $Service (players see 'server restarting'; kitchens are saved first)"
+    $state = Stop-ServiceRobust -Name $Service
+    if ($state -ne 'Stopped') {
+        throw "$Service did not stop (it is '$state')."
+    }
+}
+
 try {
     if ($installed -ne $lockHash) {
         # The running service keeps native modules open, so it stops before npm replaces them.
         if ($svc) {
-            Write-Step "Stopping $Service (players see 'server restarting'; kitchens are saved first)"
-            Stop-Service -Name $Service
+            Stop-Game
         }
         Write-Step 'Installing dependencies (npm ci)'
         Invoke-Native 'npm.cmd' @('ci', '--no-audit', '--no-fund')
@@ -60,8 +68,7 @@ try {
     Invoke-Native 'npm.cmd' @('run', 'build')
 
     if ($svc -and (Get-Service -Name $Service).Status -ne 'Stopped') {
-        Write-Step "Stopping $Service (players see 'server restarting'; kitchens are saved first)"
-        Stop-Service -Name $Service
+        Stop-Game
     }
     Write-Step 'Applying database migrations'
     Invoke-Native 'node.exe' @("--env-file=$EnvFile", 'apps\server\dist\migrate.js')
@@ -72,8 +79,13 @@ try {
         Wait-Ready $port
     }
 } catch {
-    if ($svc -and (Get-Service -Name $Service).Status -ne 'Running') {
-        Write-Warning "$Service is stopped. Fix the error below and run this script again (or 'Start-Service $Service' to bring the previous build back)."
+    if ($svc) {
+        $now = [string](Get-Service -Name $Service).Status
+        if ($now -eq 'Stopped') {
+            Write-Warning "$Service is stopped. Fix the error below and run this script again (or 'Start-Service $Service' to bring the previous build back)."
+        } elseif ($now -ne 'Running') {
+            Write-Warning "$Service is '$now'. See 'Stuck in Stop pending' in docs/DEPLOYMENT_WINDOWS.md, then run this script again."
+        }
     }
     throw
 }
