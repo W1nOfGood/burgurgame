@@ -112,8 +112,8 @@ def mince(n: int = 1024, seed: int = 7, veggie: bool = False) -> dict[str, str]:
         raw = lerp(raw, rgb("#3f3a1e"), crevice[..., None] * 0.7)
         seared = lerp(rgb("#4a3118"), rgb("#7a5226"), pr[..., None])
     else:
-        raw = lerp(rgb("#6a0f1b"), rgb("#c2343f"), sat(0.25 * strand_tone + 0.75 * pr ** 0.8)[..., None])
-        raw = lerp(raw, rgb("#33060c"), crevice[..., None] ** 1.5 * 0.9)
+        raw = lerp(rgb("#6e2226"), rgb("#b84a4c"), sat(0.25 * strand_tone + 0.75 * pr ** 0.8)[..., None])
+        raw = lerp(raw, rgb("#3a1012"), crevice[..., None] ** 1.5 * 0.9)
         raw = lerp(raw, lerp(rgb("#ecc9c0"), rgb("#d99a92"), strand_tone[..., None]), sat(fat_amt * 1.6)[..., None] * 0.8)
         raw = raw * (0.94 + 0.06 * along[..., None] * 0.5)
         # Smashed on a flat top, the high strands take the deepest crust; crevices stay grey-brown.

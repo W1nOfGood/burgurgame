@@ -142,7 +142,8 @@ float ahbLevel(vec3 nW) {
 float ahbAmount(vec2 uv, vec3 nW) {
   float c = ahbLevel(nW);
   float p = ahbProgress(uv);
-  return smoothstep(p - 0.3, p + 0.05, c * 1.2);
+  // Browning reaches a pixel once doneness passes its progress value: nothing at 0, all by ~0.9.
+  return smoothstep(p, p + 0.15, c * 1.2);
 }
 `,
       CUSTOM_FRAGMENT_UPDATE_ALBEDO: `
@@ -155,9 +156,14 @@ float ahbAmount(vec2 uv, vec3 nW) {
 #else
   surfaceAlbedo = mix(surfaceAlbedo, cookedTex, k);
 #endif
-  float over = clamp(ahbLevel(vNormalW) - 1.0, 0.0, 1.0);
-  float burnMask = smoothstep(ahbProgress(vMainUV1) + 0.2, ahbProgress(vMainUV1) - 0.3, ahbCook.w + over * 0.6);
-  surfaceAlbedo = mix(surfaceAlbedo, vec3(0.012, 0.009, 0.007), clamp((1.0 - burnMask) * 0.95, 0.0, 0.95));
+  // Burn accumulates on the side in contact with the griddle, so char shows fully on faces that
+  // are past done and only creeps onto the others (high strands and edges first).
+  float level = ahbLevel(vNormalW);
+  float over = clamp(level - 1.0, 0.0, 1.0);
+  float charge = ahbCook.w * mix(0.25, 1.0, smoothstep(0.85, 1.05, level)) + over * 0.6;
+  float p = ahbProgress(vMainUV1);
+  float charred = smoothstep(p, p + 0.2, charge);
+  surfaceAlbedo = mix(surfaceAlbedo, vec3(0.012, 0.009, 0.007), clamp(charred * 0.95, 0.0, 0.95));
 }
 #endif
 #ifdef AHBCOOK

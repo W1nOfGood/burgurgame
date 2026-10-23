@@ -30,8 +30,24 @@ interface HandPose {
   curl: number;
 }
 
-const IDLE_R: HandPose = { pos: new Vector3(0.21, -0.24, 0.4), rot: new Vector3(0.3, -0.28, 0.4), curl: 0.3 };
-const IDLE_L: HandPose = { pos: new Vector3(-0.21, -0.255, 0.39), rot: new Vector3(0.3, 0.28, -0.4), curl: 0.3 };
+/**
+ * Camera-space shoulders. The model has no wrist bend, so the forearm (and its sleeve) runs
+ * straight back from the hand: aiming it at the shoulder makes it leave the frame through the
+ * bottom corners, the way real forearms do, instead of pointing at the lens.
+ */
+const SHOULDER_R = new Vector3(0.24, -0.46, -0.08);
+const SHOULDER_L = new Vector3(-0.24, -0.46, -0.08);
+
+/** Hand rotation with the forearm aimed at ``shoulder``; ``roll`` turns the palm, ``tilt`` dips the fingers. */
+function aimed(target: Vector3, shoulder: Vector3, roll: number, tilt = 0, curl = 0.3): HandPose {
+  // Keep hands in frame and within arm's reach.
+  const pos = new Vector3(Math.max(-0.4, Math.min(0.4, target.x)), Math.max(-0.45, Math.min(0.1, target.y)), Math.max(0.25, Math.min(0.7, target.z)));
+  const f = pos.subtract(shoulder).normalize();
+  return { pos, rot: new Vector3(-Math.asin(f.y) + tilt, Math.atan2(f.x, f.z), roll), curl };
+}
+
+const IDLE_R = aimed(new Vector3(0.17, -0.25, 0.4), SHOULDER_R, 0.35, 0.12);
+const IDLE_L = aimed(new Vector3(-0.17, -0.26, 0.39), SHOULDER_L, -0.35, 0.12);
 
 /**
  * First-person hands parented to the camera. Placeholder mitten geometry with grip poses per
@@ -158,7 +174,8 @@ export class FirstPersonHands {
     const left = make("L", this.left);
     this.right.rotation.copyFrom(savedR);
     this.left.rotation.copyFrom(savedL);
-    for (const mesh of [...this.right.getChildMeshes(true), ...this.left.getChildMeshes(true)]) {
+    // All descendants: the stand-in fingertips hang under their finger bases.
+    for (const mesh of [...this.right.getChildMeshes(false), ...this.left.getChildMeshes(false)]) {
       if (mesh.metadata?.placeholder) mesh.isVisible = false;
     }
     this.authored = { right, left };
@@ -178,34 +195,28 @@ export class FirstPersonHands {
     if (heldLocal && grip) {
       const near = heldLocal.clone();
       if (grip === "tray") {
-        this.targetR = { pos: near.add(new Vector3(0.17, -0.02, -0.05)), rot: new Vector3(0.1, 0, -0.3), curl: 0.6 };
-        this.targetL = { pos: near.add(new Vector3(-0.17, -0.02, -0.05)), rot: new Vector3(0.1, 0, 0.3), curl: 0.6 };
+        this.targetR = aimed(near.add(new Vector3(0.17, -0.02, -0.05)), SHOULDER_R, -0.3, 0, 0.6);
+        this.targetL = aimed(near.add(new Vector3(-0.17, -0.02, -0.05)), SHOULDER_L, 0.3, 0, 0.6);
       } else if (grip === "tool") {
-        this.targetR = { pos: near.add(new Vector3(0.02, 0.0, -0.17)), rot: new Vector3(0.1, 0, 0), curl: 1 };
+        this.targetR = aimed(near.add(new Vector3(0.02, 0.0, -0.17)), SHOULDER_R, 0, 0, 1);
         this.targetL = IDLE_L;
       } else if (grip === "bottle") {
-        this.targetR = { pos: near.add(new Vector3(0.05, -0.02, -0.03)), rot: new Vector3(0.0, 0, 1.2), curl: 0.9 };
+        this.targetR = aimed(near.add(new Vector3(0.05, -0.02, -0.03)), SHOULDER_R, 1.2, 0, 0.9);
         this.targetL = IDLE_L;
       } else {
-        this.targetR = { pos: near.add(new Vector3(0.0, 0.035, -0.02)), rot: new Vector3(0.5, 0, 0), curl: 0.8 };
+        this.targetR = aimed(near.add(new Vector3(0.0, 0.035, -0.02)), SHOULDER_R, 0, 0.35, 0.8);
         this.targetL = IDLE_L;
       }
     } else {
       this.targetR = IDLE_R;
       this.targetL = IDLE_L;
     }
-    // Clamp so hands stay in frame and never stretch past the arm.
-    const clampPose = (p: HandPose): HandPose => ({
-      pos: new Vector3(Math.max(-0.4, Math.min(0.4, p.pos.x)), Math.max(-0.45, Math.min(0.1, p.pos.y)), Math.max(0.25, Math.min(0.7, p.pos.z))),
-      rot: p.rot,
-      curl: p.curl,
-    });
     const k = 1 - Math.exp(-dt * 16);
     this.bobPhase += dt * moving * 9;
     const bob = Math.sin(this.bobPhase) * 0.008 * bobAmount * Math.min(1, moving);
     for (const [node, target, fingers] of [
-      [this.right, clampPose(this.targetR), this.fingersR],
-      [this.left, clampPose(this.targetL), this.fingersL],
+      [this.right, this.targetR, this.fingersR],
+      [this.left, this.targetL, this.fingersL],
     ] as const) {
       Vector3.LerpToRef(node.position, target.pos.add(new Vector3(0, bob, 0)), k, node.position);
       Vector3.LerpToRef(node.rotation, target.rot, k, node.rotation);

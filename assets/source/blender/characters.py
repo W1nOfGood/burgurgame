@@ -530,7 +530,7 @@ def crew_member(m) -> list[bpy.types.Object]:
 
 def materials() -> dict:
     return {
-        "glove": bl.solid("nitrile_black", (0.03, 0.03, 0.035), 0.4, coat=0.12),
+        "glove": bl.solid("nitrile_black", (0.035, 0.035, 0.04), 0.52),
         "skin": bl.solid("crew_skin", (0.72, 0.52, 0.4), 0.5),
         "cuff": bl.solid("chef_white", (0.92, 0.92, 0.9), 0.75),
         "piping": bl.solid("chef_piping", (0.05, 0.05, 0.05), 0.6),
