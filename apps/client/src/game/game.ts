@@ -45,12 +45,13 @@ import {
   sizzleLevel,
   stackOffsets,
   surfaceAt,
+  wrapAngle,
   type CustomerPhase,
   type Rapier,
 } from "@ahb/simulation";
 import { MSG, PING_TEXT, readFoodBytes, type ItemState, type PingPreset, type ResultMessage } from "@ahb/protocol";
 import type { Session } from "../net/session.js";
-import { ServerClock, SnapshotBuffer, type Pose } from "../net/interp.js";
+import { PoseSmoother, ServerClock, SnapshotBuffer, yawOfPose, type Pose } from "../net/interp.js";
 import { isTouchDevice, saveSettings, type Settings } from "../settings.js";
 import type { Ui } from "../ui/ui.js";
 import { AudioEngine, type Sfx } from "./audio.js";
@@ -95,6 +96,28 @@ export function recipeHint(id: RecipeId): string {
 }
 
 const TMP_POSE: Pose = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
+const TMP_Q = new Quaternion();
+/** Remote motion may run this far past the newest patch when one is late. */
+const MAX_EXTRAPOLATE_TICKS = (NET.maxExtrapolationMs * NET.tickHz) / 1000;
+/** Fallback expiry of a local prediction the server never answered (rejections clear it at once). */
+const PREDICTION_TIMEOUT_MS = 4000;
+
+/** Where an item's shown pose comes from; a change of source is blended, not jumped. */
+type ItemSource = "held" | "placed" | "buffer" | "late" | "layer";
+/** Predicted held item (optimistic until the server confirms or rejects). */
+interface HeldOverride {
+  id: string | null;
+  kind: ItemKind | null;
+  until: number;
+}
+/** Predicted resting pose of an item just put down, shown until the delayed view catches up. */
+interface PlaceOverride extends Pose {
+  until: number;
+  /** Item revision when it was put down; only a later revision can confirm it. */
+  rev: number;
+  /** Server tick of the first patch showing the item out of our hands. */
+  confirmTick: number | null;
+}
 
 /** Creates the WebGL2 engine (required baseline); WebGPU only after capability checks. */
 export async function createEngine(canvas: HTMLCanvasElement, settings: Settings): Promise<AbstractEngine> {
@@ -132,6 +155,8 @@ export class Game {
   private readonly itemBuffers = new Map<string, SnapshotBuffer>();
   private readonly avatars = new Map<string, AvatarView>();
   private readonly avatarBuffers = new Map<string, SnapshotBuffer>();
+  private readonly avatarSmooth = new Map<string, { smooth: PoseSmoother; late: boolean }>();
+  private readonly itemSmooth = new Map<string, { smooth: PoseSmoother; source: ItemSource | null }>();
   private readonly customers = new Map<string, CustomerView>();
   /** Render tick at which customers froze for a pause (the server shifts their clocks on resume). */
   private customerFreeze: number | null = null;
@@ -141,7 +166,12 @@ export class Game {
   private readonly touch: TouchControls | null;
   private readonly hands: FirstPersonHands;
   readonly audio: AudioEngine;
-  private readonly clock = new ServerClock(NET.tickHz, NET.interpolationDelayMs);
+  private readonly clock = new ServerClock({
+    tickHz: NET.tickHz,
+    patchHz: NET.patchHz,
+    minDelayMs: NET.interpolationDelayMs,
+    maxDelayMs: NET.maxInterpolationDelayMs,
+  });
   private readonly stepper = new FixedStepper(NET.tickHz, NET.maxCatchUpSteps);
   private yaw = 0;
   private pitch = 0.15;
@@ -155,8 +185,8 @@ export class Game {
   private controlSendTimer = 0;
   private knobOverride = new Map<number, { value: number; until: number }>();
   private drawerOverride: { value: number; until: number } | null = null;
-  private heldOverride: { id: string | null; kind: ItemKind | null; until: number } | null = null;
-  private placeOverride = new Map<string, { x: number; y: number; z: number; until: number }>();
+  private heldOverride: HeldOverride | null = null;
+  private placeOverride = new Map<string, PlaceOverride>();
   private spawnGhost: ItemView | null = null;
   private previewGhost: ItemView | null = null;
   private pressBeganHolding = false;
@@ -434,7 +464,8 @@ export class Game {
         }
         if (p.held !== this.lastHeldServer) {
           this.lastHeldServer = p.held;
-          if (this.heldOverride && this.heldOverride.id === (p.held || null)) this.clearHeldOverride();
+          const o = this.heldOverride;
+          if (o && (o.id === (p.held || null) || (o.kind && p.held))) this.clearHeldOverride();
         }
         continue;
       }
@@ -443,6 +474,7 @@ export class Game {
         av = new AvatarView(this.scene, this.restaurant.materials, id, p.color);
         this.avatars.set(id, av);
         this.avatarBuffers.set(id, new SnapshotBuffer());
+        this.avatarSmooth.set(id, { smooth: new PoseSmoother(), late: false });
         this.restaurant.registerCasters(av.castMeshes);
       }
       const q = Quaternion.RotationYawPitchRoll(p.yaw, 0, 0);
@@ -453,6 +485,7 @@ export class Game {
         this.avatars.get(id)!.dispose();
         this.avatars.delete(id);
         this.avatarBuffers.delete(id);
+        this.avatarSmooth.delete(id);
       }
     }
 
@@ -466,14 +499,18 @@ export class Game {
       }
       this.itemBuffers.get(id)!.push(tick, { x: it.x, y: it.y, z: it.z, qx: it.qx, qy: it.qy, qz: it.qz, qw: it.qw });
       view.setAppearance(ITEMS[it.kind as ItemKind]?.food ? readFoodBytes(it) : null, it);
+      // A put-down is confirmed by the first newer patch with the item out of our hands (an
+      // older one may predate a grab the server hasn't seen yet); the view switches to the
+      // server's pose once the delayed render clock reaches that patch.
       const po = this.placeOverride.get(id);
-      if (po && !it.holder && Math.hypot(it.x - po.x, it.z - po.z) < 0.25) this.placeOverride.delete(id);
+      if (po && po.confirmTick === null && it.rev > po.rev && !this.attachedToMe(it)) po.confirmTick = tick;
     }
     for (const id of [...this.items.keys()]) {
       if (!state.items.has(id)) {
         this.items.get(id)!.dispose();
         this.items.delete(id);
         this.itemBuffers.delete(id);
+        this.itemSmooth.delete(id);
         this.placeOverride.delete(id);
       }
     }
@@ -498,6 +535,13 @@ export class Game {
 
   private me() {
     return this.session.state?.players?.get(this.session.sessionId);
+  }
+
+  /** True while the item is in our hands, directly or as the load of a held spatula or tray. */
+  private attachedToMe(it: ItemState): boolean {
+    const me = this.session.sessionId;
+    if (it.holder === me) return true;
+    return it.root !== "" && this.session.state.items.get(it.root)?.holder === me;
   }
 
   /** Locally predicted held item id (optimistic until the server confirms or rejects). */
@@ -544,10 +588,11 @@ export class Game {
     const holding = this.heldId() !== null || this.heldOverride?.kind != null;
     if (!this.capture) {
       if (this.input.rotating && holding) {
-        this.rotYaw += f.rotDX;
+        this.rotYaw = wrapAngle(this.rotYaw + f.rotDX);
         this.rotPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.rotPitch + f.rotDY));
       }
-      this.yaw += f.lookDX;
+      // Wrapped: the yaw goes out in every move sample and place (an endless turn must stay valid).
+      this.yaw = wrapAngle(this.yaw + f.lookDX);
       this.pitch = Math.max(-PLAYER.maxPitch, Math.min(PLAYER.maxPitch, this.pitch + f.lookDY));
     }
     if (f.hold !== 0) this.hold = InputManager.clampHold(this.hold + f.hold);
@@ -589,15 +634,21 @@ export class Game {
     this.camera.rotation.set(this.pitch, this.yaw, 0);
 
     // Remote players.
+    this.clock.tick(dtMs);
     const renderTick = this.clock.renderTick(now);
-    this.clock.tick(dtMs, NET.interpolationDelayMs);
     for (const [id, av] of this.avatars) {
       const p = state.players.get(id);
       const buf = this.avatarBuffers.get(id)!;
+      const sm = this.avatarSmooth.get(id)!;
       if (!p) continue;
-      if (!buf.sample(renderTick, TMP_POSE)) this.clock.reportUnderrun();
+      const fresh = buf.sample(renderTick, TMP_POSE, MAX_EXTRAPOLATE_TICKS);
+      if (!fresh) this.clock.reportUnderrun();
+      // A late patch ends an extrapolation: fade the correction in.
+      if (fresh && sm.late) sm.smooth.blend();
+      sm.late = !fresh;
+      sm.smooth.apply(TMP_POSE, dt);
       const label = `${p.name}${p.platform === "touch" ? " · tablet" : ""}${p.away ? " · away" : ""}${p.admin ? " ★" : ""}`;
-      av.update(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, p.yaw, p.pitch, p.crouch, p.held !== "", label, !p.connected);
+      av.update(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, yawOfPose(TMP_POSE), p.pitch, p.crouch, p.held !== "", label, !p.connected);
     }
 
     // Customers: poses come from their replicated phase and the render clock.
@@ -631,15 +682,21 @@ export class Game {
       }
       const view = this.items.get(id);
       if (!view) continue;
+      const po = this.placeOverride.get(id);
+      if (po && (now > po.until || (po.confirmTick !== null && renderTick >= po.confirmTick))) this.placeOverride.delete(id);
+      let source: ItemSource;
       if (id === heldId) {
-        this.poseHeld(view, eye, it.kind as ItemKind);
-      } else if (this.placeOverride.has(id) && now < this.placeOverride.get(id)!.until) {
-        const po = this.placeOverride.get(id)!;
-        view.setPose(po.x, po.y, po.z, Quaternion.RotationYawPitchRoll(this.yaw, 0, 0));
+        this.heldPose(eye, it.kind as ItemKind, TMP_POSE);
+        source = "held";
+      } else if (this.placeOverride.has(id)) {
+        Object.assign(TMP_POSE, this.placeOverride.get(id)!);
+        source = "placed";
       } else {
-        if (!this.itemBuffers.get(id)!.sample(renderTick, TMP_POSE)) this.clock.reportUnderrun();
-        view.setPose(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, new Quaternion(TMP_POSE.qx, TMP_POSE.qy, TMP_POSE.qz, TMP_POSE.qw));
+        const fresh = this.itemBuffers.get(id)!.sample(renderTick, TMP_POSE, MAX_EXTRAPOLATE_TICKS);
+        if (!fresh) this.clock.reportUnderrun();
+        source = fresh ? "buffer" : "late";
       }
+      this.presentItem(id, view, source, dt);
     }
     for (const [rootId, layers] of stacks) {
       const rootView = this.items.get(rootId);
@@ -656,10 +713,14 @@ export class Game {
         if (!v) return;
         const local = new Vector3(0, offsets[i + 1]!, fwd);
         const world = local.rotateByQuaternionToRef(q, new Vector3()).addInPlace(rootView.root.position);
-        v.setPose(world.x, world.y, world.z, q);
+        Object.assign(TMP_POSE, { x: world.x, y: world.y, z: world.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w });
+        this.presentItem(id!, v, "layer", dt);
       });
     }
-    if (this.spawnGhost) this.poseHeld(this.spawnGhost, eye, this.spawnGhost.kind);
+    if (this.spawnGhost) {
+      this.heldPose(eye, this.spawnGhost.kind, TMP_POSE);
+      this.spawnGhost.setPose(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, TMP_Q.set(TMP_POSE.qx, TMP_POSE.qy, TMP_POSE.qz, TMP_POSE.qw));
+    }
 
     // Targeting, labels and placement preview.
     this.updateTarget();
@@ -713,14 +774,27 @@ export class Game {
   }
 
   /** Mirrors the server's held-object placement using the local predicted eye. */
-  private poseHeld(view: ItemView, eye: Vector3, kind: ItemKind): void {
+  private heldPose(eye: Vector3, kind: ItemKind, out: Pose): void {
     const dir = lookDirection(this.yaw, this.pitch);
     let d = this.hold;
     const hit = this.local.pw.castStatic(eye, dir, d + 0.1);
     if (hit !== null) d = Math.max(0.2, hit - 0.1);
     const drop = kind === "tray" ? 0.18 : 0.1;
     const q = kind === "tray" ? Quaternion.RotationYawPitchRoll(this.yaw, 0, 0) : Quaternion.RotationYawPitchRoll(this.yaw + this.rotYaw, this.rotPitch, 0);
-    view.setPose(eye.x + dir.x * d, eye.y + dir.y * d - drop, eye.z + dir.z * d, q);
+    Object.assign(out, { x: eye.x + dir.x * d, y: eye.y + dir.y * d - drop, z: eye.z + dir.z * d, qx: q.x, qy: q.y, qz: q.z, qw: q.w });
+  }
+
+  /** Shows an item at TMP_POSE, fading out the jump when its pose source changed. */
+  private presentItem(id: string, view: ItemView, source: ItemSource, dt: number): void {
+    let sm = this.itemSmooth.get(id);
+    if (!sm) {
+      sm = { smooth: new PoseSmoother(), source: null };
+      this.itemSmooth.set(id, sm);
+    }
+    if (sm.source !== null && sm.source !== source) sm.smooth.blend();
+    sm.source = source;
+    sm.smooth.apply(TMP_POSE, dt);
+    view.setPose(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, TMP_Q.set(TMP_POSE.qx, TMP_POSE.qy, TMP_POSE.qz, TMP_POSE.qw));
   }
 
   private updateHud(now: number): void {
@@ -1064,24 +1138,26 @@ export class Game {
         const root = it.root ? st.items.get(it.root) : it;
         const takesLayer = it.root !== "" && !this.hasChild(t.pick.id) && !(root?.holder);
         const holdId = takesLayer ? t.pick.id : it.root || t.pick.id;
-        this.heldOverride = { id: holdId, kind: null, until: performance.now() + 1500 };
-        void this.run(MSG.grab, { item: t.pick.id, rev: it.rev }, () => this.clearHeldOverride()).then((r) => r.ok && this.sfx("grab"));
+        const held = this.predictHeld({ id: holdId, kind: null });
+        this.placeOverride.delete(holdId);
+        void this.run(MSG.grab, { item: t.pick.id, rev: it.rev }, () => this.clearHeldOverride()).then((r) => {
+          if (!r.ok) return;
+          this.settleHeld(held);
+          this.sfx("grab");
+        });
         return;
       }
       case "dispenser": {
         const d = t.pick;
         this.clearHeldOverride();
-        this.heldOverride = { id: null, kind: d.kind, until: performance.now() + 1500 };
+        const held = this.predictHeld({ id: null, kind: d.kind });
         this.spawnGhost = new ItemView(this.scene, this.restaurant.materials, "spawn", d.kind);
         for (const mm of [this.spawnGhost.root, ...this.spawnGhost.root.getChildMeshes()]) mm.isPickable = false;
+        // The ghost stays in hand until the patch with the real item arrives (see onState).
         void this.run(MSG.grab, { dispenser: d.id }, () => this.clearHeldOverride()).then((r) => {
-          if (r.ok) {
-            this.sfx("grab");
-            // Keep the ghost until the real item arrives in our hands.
-            if (this.heldOverride?.kind) this.heldOverride = { id: this.me()?.held || null, kind: null, until: performance.now() + 1500 };
-            this.spawnGhost?.dispose();
-            this.spawnGhost = null;
-          }
+          if (!r.ok) return;
+          this.settleHeld(held);
+          this.sfx("grab");
         });
         return;
       }
@@ -1099,8 +1175,11 @@ export class Game {
     if (!kind) return;
     const point = place.onto ? (this.items.get(place.onto)?.root.position ?? t.point) : t.point;
     const movingId = kind === "spatula" ? this.spatulaLoadId() : heldId;
-    if (movingId && !place.trash) this.placeOverride.set(movingId, { x: place.pos.x, y: place.pos.y, z: place.pos.z, until: performance.now() + 900 });
-    if (kind !== "spatula") this.heldOverride = { id: null, kind: null, until: performance.now() + 900 };
+    if (movingId) {
+      const q = Quaternion.RotationYawPitchRoll(this.yaw, 0, 0);
+      this.predictPlaced(movingId, { x: place.pos.x, y: place.pos.y, z: place.pos.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w });
+    }
+    const held = kind !== "spatula" ? this.predictHeld({ id: null, kind: null }) : null;
     void this.run(
       MSG.place,
       { point: { x: point.x, y: place.onto ? point.y : t.point.y, z: point.z }, ...(place.onto ? { onto: place.onto } : {}), yaw: this.yaw },
@@ -1108,7 +1187,32 @@ export class Game {
         if (movingId) this.placeOverride.delete(movingId);
         this.clearHeldOverride();
       },
-    ).then((r) => r.ok && this.sfx(place.trash ? "trash" : "place", { x: point.x, y: point.y, z: point.z }));
+    ).then((r) => {
+      if (!r.ok) return;
+      this.settleHeld(held);
+      this.sfx(place.trash ? "trash" : "place", { x: point.x, y: point.y, z: point.z });
+    });
+  }
+
+  /** Shows `id` at `pose` until the delayed view shows the server's put-down. */
+  private predictPlaced(id: string, pose: Pose): void {
+    const rev = this.session.state.items.get(id)?.rev ?? 0;
+    this.placeOverride.set(id, { ...pose, until: performance.now() + PREDICTION_TIMEOUT_MS, rev, confirmTick: null });
+  }
+
+  /** Predicts what is in our hands until the server's patch confirms it (or the command fails). */
+  private predictHeld(o: Omit<HeldOverride, "until">): HeldOverride {
+    this.heldOverride = { ...o, until: performance.now() + PREDICTION_TIMEOUT_MS };
+    return this.heldOverride;
+  }
+
+  /**
+   * The server accepted the command and its next patch carries the result, so the prediction
+   * only has to bridge that gap. (Some accepted commands leave the hands unchanged, e.g.
+   * scraping a tray, and no patch would ever clear the prediction.)
+   */
+  private settleHeld(o: HeldOverride | null): void {
+    if (o && this.heldOverride === o) o.until = Math.min(o.until, performance.now() + 400);
   }
 
   private spatulaLoadId(): string | null {
@@ -1222,8 +1326,25 @@ export class Game {
       }
       case "setDown": {
         if (!heldKind) return;
-        this.heldOverride = heldKind === "spatula" && this.spatulaLoadKind() ? this.heldOverride : { id: null, kind: null, until: performance.now() + 900 };
-        void this.run(MSG.setDown, {}, () => this.clearHeldOverride()).then((r) => r.ok && this.sfx("place"));
+        const spatulaLoad = heldKind === "spatula" && this.spatulaLoadKind();
+        // The server picks the resting spot: until its patch shows it, leave the item where it
+        // was shown instead of letting the delayed view pull it back into the hand.
+        const movingId = spatulaLoad ? this.spatulaLoadId() : this.heldId();
+        const view = movingId ? this.items.get(movingId) : undefined;
+        if (movingId && view) {
+          const r = view.root;
+          const q = r.rotationQuaternion!;
+          this.predictPlaced(movingId, { x: r.position.x, y: r.position.y, z: r.position.z, qx: q.x, qy: q.y, qz: q.z, qw: q.w });
+        }
+        const held = spatulaLoad ? null : this.predictHeld({ id: null, kind: null });
+        void this.run(MSG.setDown, {}, () => {
+          if (movingId) this.placeOverride.delete(movingId);
+          this.clearHeldOverride();
+        }).then((r) => {
+          if (!r.ok) return;
+          this.settleHeld(held);
+          this.sfx("place");
+        });
         return;
       }
       case "inspect":
@@ -1290,7 +1411,7 @@ export class Game {
 
   /** Test hook: aim the camera precisely. */
   debugLook(yaw: number, pitch: number): void {
-    this.yaw = yaw;
+    this.yaw = wrapAngle(yaw);
     this.pitch = pitch;
   }
 }

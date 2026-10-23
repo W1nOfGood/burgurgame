@@ -156,7 +156,7 @@ nssm install AfterHoursGame $node --env-file=C:\after-hours-data\game.env apps\s
 nssm set AfterHoursGame AppDirectory C:\after-hours
 nssm set AfterHoursGame DisplayName 'After Hours Burger game service'
 nssm set AfterHoursGame DependOnService $pgService
-nssm set AfterHoursGame AppStopMethodConsole 30000      # 30 s to save kitchens on stop/restart
+nssm set AfterHoursGame AppStopMethodConsole 10000      # Ctrl+C, then up to 10 s to save kitchens and exit
 nssm set AfterHoursGame AppStdout C:\after-hours-data\logs\game.log
 nssm set AfterHoursGame AppStderr C:\after-hours-data\logs\game.log
 nssm set AfterHoursGame AppRotateFiles 1
@@ -247,7 +247,9 @@ cd C:\after-hours
 
 It pulls the code, reinstalls dependencies only when `package-lock.json` changed, builds, runs
 the database migrations, restarts the game service, waits until it is ready, then publishes the
-website (new files first, `index.html` last). Players in a kitchen during the restart see a
+website (new files first, `index.html` last). Stopping waits up to 15 s for the service; if it
+is still stopping after that, the script ends the service's processes and carries on, and it
+reports the service's real state if anything fails. Players in a kitchen during the restart see a
 "server restarting" message; their restaurant is saved first and the owner reopens it. If
 Windows refuses to run the script, use
 `powershell -ExecutionPolicy Bypass -File .\scripts\windows\update.ps1 -RealtimeUrl https://realtime.example.com`.
@@ -306,12 +308,32 @@ raising it (see `docs/KNOWN_LIMITATIONS.md`).
 | `AfterHoursGame` stops right after starting | Read `C:\after-hours-data\logs\game.log`: usually a mistake in `game.env` (`ALLOWED_ORIGINS`, a `GUEST_TOKEN_SECRET` shorter than 32 characters) or PostgreSQL not running |
 | `readyz` returns 503 | Database not reachable: `Get-Service postgresql*`, and check the password in `DATABASE_URL` |
 | No certificate / "challenge failed" in `caddy.log` | DNS doesn't point at the VPS yet, ports 80/443 are blocked by the provider's firewall, or another program holds port 80 (`Get-NetTCPConnection -LocalPort 80 -State Listen`, then `Get-Process -Id <OwningProcess>`) |
+| Stopping hangs: `Restart-Service` repeats "Waiting for service … to stop", the service sits in **Stop pending**, `nssm restart` says "The service cannot accept control messages at this time" | The game process did not exit after shutting down — see [Stuck in Stop pending](#stuck-in-stop-pending) |
 | `npm ci` fails with EPERM / "file in use" | Something holds files in `node_modules` (an editor, or the game service): `Stop-Service AfterHoursGame` and run the update again |
 | "Can't reach the game server" | `realtime.` DNS, certificate or proxy not working; check `Invoke-RestMethod https://realtime.example.com/healthz` |
 | Join fails with CORS errors in the browser console | `ALLOWED_ORIGINS` doesn't exactly match the site's origin (scheme + host, no slash) |
 | Connects then drops immediately | Something in front of the VPS (a CDN or proxy) doesn't pass WebSockets; with IIS, the WebSocket Protocol feature is missing |
 | Blank page | Client built with the wrong `-RealtimeUrl` (run `update.ps1` again with the right one), or files not in `C:\www\after-hours` |
 | Everyone signed out after an update | `GUEST_TOKEN_SECRET` changed |
+
+### Stuck in Stop pending
+
+Older builds could finish their shutdown ("shutdown complete" in `game.log`) and then not exit,
+which leaves the service in **Stop pending** until the process is ended. Current builds save the
+kitchens and exit within 8 seconds of the stop request, and `update.ps1` / `restore.ps1` end the
+processes themselves if a stop still hangs. To recover by hand (PowerShell as Administrator):
+
+```powershell
+taskkill /F /T /FI "SERVICES eq AfterHoursGame"                  # NSSM and the node.exe it runs
+Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+    Where-Object CommandLine -like '*apps\server\dist\index.js*' |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }       # any leftover game process
+Get-Service AfterHoursGame                                        # should now say Stopped
+nssm set AfterHoursGame AppStopMethodConsole 10000                # if you installed with 30000
+Start-Service AfterHoursGame
+```
+
+Then update to the current version (`.\scripts\windows\update.ps1 -RealtimeUrl …`).
 
 ## IIS or Plesk instead of Caddy
 

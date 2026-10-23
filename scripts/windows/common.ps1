@@ -52,6 +52,59 @@ function Find-PgTool([string]$Name) {
     return $hit.FullName
 }
 
+# Stops a Windows service and makes sure its process is really gone. A service whose process
+# lingers after the stop request stays "Stop pending" and refuses further control messages
+# ("The service cannot accept control messages at this time"). So: ask it to stop, wait up to
+# $TimeoutSeconds, and if it is still not stopped, kill the service's process tree (NSSM and
+# the node.exe it runs) and any node.exe still running $CommandLineLike. Returns the final
+# status as a string ('Stopped', 'StopPending', ...; 'Missing' if there is no such service).
+function Stop-ServiceRobust {
+    param(
+        [string]$Name,
+        [int]$TimeoutSeconds = 15,
+        [string]$CommandLineLike = '*apps\server\dist\index.js*'
+    )
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $svc) {
+        return 'Missing'
+    }
+    if ($svc.Status -eq 'Stopped') {
+        return 'Stopped'
+    }
+    try {
+        $svc.Stop()
+    } catch {
+        # Already stop-pending (or paused): it will not take another request; wait, then kill.
+        Write-Host "    stop request not accepted (status: $($svc.Status))"
+    }
+    try {
+        $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds($TimeoutSeconds))
+    } catch {
+        # Timed out: handled below.
+    }
+    $svc.Refresh()
+    if ($svc.Status -ne 'Stopped') {
+        Write-Warning "$Name is still '$($svc.Status)' after $TimeoutSeconds s; ending its processes."
+        $saved = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & taskkill.exe /F /T /FI "SERVICES eq $Name" 2>&1 | Out-Null
+        } finally {
+            $ErrorActionPreference = $saved
+        }
+        Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+            Where-Object { $_.CommandLine -and ($_.CommandLine -like $CommandLineLike) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        try {
+            $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(10))
+        } catch {
+            # Reported below.
+        }
+        $svc.Refresh()
+    }
+    return [string]$svc.Status
+}
+
 # Waits until the game service answers /readyz (database reachable).
 function Wait-Ready([string]$Port, [int]$Seconds = 60) {
     $deadline = (Get-Date).AddSeconds($Seconds)

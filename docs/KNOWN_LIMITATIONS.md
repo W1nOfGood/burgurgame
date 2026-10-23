@@ -14,9 +14,12 @@ Honest status against the specification. Nothing below is claimed as done.
 - **VPS deployment** has not been performed on your server. The Docker image, Compose stack,
   migrations, health checks, backup and a restore into a clean database were exercised locally.
   The Nginx/DirectAdmin configuration is an example to validate on the real host.
-- **Two independent networks**, latency/jitter/packet-loss tests and **multi-room load tests**
-  have not been run, so no player or room capacity is promised. `MAX_ROOMS` defaults to 20 as a
-  conservative guard until measured.
+- **Two independent networks** and **multi-room load tests** have not been run, so no player
+  or room capacity is promised. `MAX_ROOMS` defaults to 20 as a conservative guard until
+  measured. Long-route latency and jitter (a Thailand client on a US server) are covered by
+  simulated tests of the server input queue and the client interpolation, not by play over a
+  real intercontinental link. Everything you do still waits one round trip for the server's
+  answer; a server in your region (Singapore for Thailand) is the real fix for that.
 
 ## Not built yet
 
@@ -42,7 +45,11 @@ Honest status against the specification. Nothing below is claimed as done.
 - **Art on real GPUs** has only been reviewed in software-rendered (SwiftShader) captures and
   Cycles previews; colour, exposure and texture density need a pass on calibrated displays and
   on an iPad.
-- **Stage 4:** customers (NPCs, queueing), fries, drinks, cleaning/spills, stock purchasing UI,
+- **Customers** walk in, order at the counter and collect their food, but they do not queue
+  behind each other (each takes a free counter spot; with every spot taken, nobody new comes
+  in until one frees), do not sit down to eat, do not react to a refused burger beyond the
+  toast, and walk through other people rather than around them.
+- **Stage 4:** fries, drinks, cleaning/spills, stock purchasing UI,
   upgrades, decoration, the in-world office catalog/ledger (the ledger appears as an overlay at
   shift end; purchases exist in the store API only).
 - **Persistence gaps:** restored kitchens get a new room code (the old code is not reserved);

@@ -172,7 +172,9 @@ def snake_plant(s, cx: float, cz: float, tag: str, scale: float = 1.0, pot_r: fl
     edge_mat = bl.solid("leaf_edge", (0.7, 0.66, 0.3), 0.5)
     import random
 
-    rnd = random.Random(hash(tag) & 0xFFFF)
+    import zlib
+
+    rnd = random.Random(zlib.crc32(tag.encode()) & 0xFFFF)  # stable across runs (str hash is salted)
     leaves = []
     for k in range(int(11 * (0.6 + 0.4 * scale))):
         a = rnd.uniform(0, 2 * math.pi)

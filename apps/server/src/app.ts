@@ -11,7 +11,8 @@ export const ROOM_NAME = "restaurant";
 
 /**
  * Builds the Colyseus server: one process, WebSocket transport, application routes, exact-origin
- * checks for HTTP matchmaking and WebSocket upgrades.
+ * checks for HTTP matchmaking and WebSocket upgrades. Signal handling is not Colyseus' (unless
+ * asked): the process entry point installs shutdown.ts.
  */
 export async function createGameServer(config: ServerConfig, store: Store, opts: { gracefullyShutdown?: boolean } = {}): Promise<Server> {
   const R = await initPhysics();
@@ -45,7 +46,7 @@ export async function createGameServer(config: ServerConfig, store: Store, opts:
   const server = new Server({
     transport,
     greet: false,
-    gracefullyShutdown: opts.gracefullyShutdown ?? true,
+    gracefullyShutdown: opts.gracefullyShutdown ?? false,
     express: (app) => mountRoutes(app, config, store),
   });
   server.define(ROOM_NAME, RestaurantRoom);

@@ -14,12 +14,17 @@ export const PlayerState = schema(
     color: t.uint8().default(0),
     /** "desktop" | "touch" */
     platform: t.string().default(""),
-    x: t.float32().default(0),
-    y: t.float32().default(0),
-    z: t.float32().default(0),
-    vx: t.float32().default(0),
-    vy: t.float32().default(0),
-    vz: t.float32().default(0),
+    /**
+     * Motor state at full precision: the owning client resets its prediction to exactly this
+     * and replays its unacknowledged input, so any rounding here would come back as a
+     * correction (centimetres where the capsule slides along a wall).
+     */
+    x: t.float64().default(0),
+    y: t.float64().default(0),
+    z: t.float64().default(0),
+    vx: t.float64().default(0),
+    vy: t.float64().default(0),
+    vz: t.float64().default(0),
     yaw: t.float32().default(0),
     pitch: t.float32().default(0),
     crouch: t.boolean().default(false),
@@ -33,6 +38,8 @@ export const PlayerState = schema(
     hold: t.float32().default(0),
     /** True while the player is in a menu (presentation only; never pauses co-op). */
     away: t.boolean().default(false),
+    /** Motor ground contact after the last simulated sample (part of the state prediction resets to). */
+    grounded: t.boolean().default(true),
   },
   "PlayerState",
 );

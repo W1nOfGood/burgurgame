@@ -26,10 +26,29 @@ HERO_ALBEDO = {"subway_white", "tile_green", "quarry", "checker", "steel", "stee
 SKIN = {"skin_hand_albedo": 2048, "skin_hand_normal": 2048, "skin_hand_orm": 1024, "skin_hand_thickness": 512}
 
 
+# People (people.py): seen across the room, several at once and on every customer look, so
+# they get the smallest sets: faces and the large garments keep a 512 colour map.
+PEOPLE = ("crew", "student", "office", "nurse", "worker", "coat", "varsity")
+PEOPLE_LARGE = ("head", "top", "bottom", "apron")
+
+
+def people_cap(base: str) -> int | None:
+    who, _, rest = base.partition("_")
+    if who not in PEOPLE:
+        return None
+    part, _, kind = rest.rpartition("_")
+    if kind == "albedo":
+        return 512 if part in PEOPLE_LARGE else 256
+    return 256 if part in PEOPLE_LARGE or part == "hair" else 128
+
+
 def cap_for(name: str) -> int:
     base = name.rsplit(".", 1)[0]
     if base in SKIN:
         return SKIN[base]
+    person = people_cap(base)
+    if person is not None:
+        return person
     for suffix in ("_albedo", "_normal", "_orm"):
         if base.endswith(suffix):
             mat = base[: -len(suffix)]

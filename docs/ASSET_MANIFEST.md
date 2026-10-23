@@ -14,7 +14,8 @@ licence (Apache-2.0) unless noted.
 | Food models and cooking-state textures (`food.gltf`, `food/*.webp`) | `food.py`, `ahb/foodtex.py` | This project | Apache-2.0 | None |
 | Tools and service items: spatula, squeeze bottles, trays, liner | `food.py` | This project | Apache-2.0 | None |
 | Interactive props: knobs, chiller drawer, stocked pans, tray stack, switch, neon OPEN sign (`props.gltf`) | `props.py` | This project | Apache-2.0 | None |
-| First-person hands and crew member (`hands.gltf`, `crew.gltf`) | `characters.py`, `ahb/sdf.py` | This project | Apache-2.0 | None |
+| First-person hands (`hands.gltf`) | `characters.py`, `ahb/sdf.py`, `ahb/skin.py` | This project | Apache-2.0 | None |
+| Crew member and walk-in customers (`crew.gltf`, `customer_*.gltf`) | `people.py`, `ahb/sdf.py`, `ahb/skin.py` | This project | Apache-2.0 | None |
 | Posters, menu light box, labels, screens, storefront windows | `ahb/graphics.py` (Pillow) | This project | Apache-2.0 | None |
 | Brand names on signs, cans, boxes and soda panels | Fictional, invented for this project | This project | Apache-2.0 | None |
 | Fonts used to *render* signage (Inter, JetBrains Mono — SIL OFL 1.1; DejaVu Serif — Bitstream Vera licence) | Vendored in `assets/source/fonts/` with `LICENSES.txt` | Rasmus Andersson; JetBrains; DejaVu authors | OFL / Bitstream Vera (rendered output may be used freely) | Kept in `assets/source/fonts/LICENSES.txt` |

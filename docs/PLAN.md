@@ -31,8 +31,8 @@ sequenced input batches instead, because the spec asks for ~30 messages/s carryi
 | --- | --- |
 | 1 — Multiplayer interaction slice | Playable: shared kitchen for desktop + touch, grab/hand-over, knobs, drawer, spatula flips, assembly, sauces, serving with one-time payment. Verified by room tests and Playwright desktop + iPad-emulated tests. **Physical iPad not yet tested.** |
 | 2 — Persistence and recovery | Foundations built and tested: guest identity, PostgreSQL schema + migrations, fenced leases, transactional sales/purchases, checkpoints, restore without double-serving, room lifecycle, pause rules. |
-| 3 — Visual benchmark | Authored art pass built by code in Blender (`docs/ASSET_PIPELINE.md`): modelled restaurant with Cycles-baked GI lightmaps, AO and box-projected reflection probes; hero food with cooking-state shaders; stocked props; rigged gloved hands and crew members. Recorded audio and review on real GPUs/iPad outstanding. |
-| 4 — Restaurant shift | 16 recipes in three unlock tiers, modifiers, scoring, ledger overlay. No customers, fries, drinks, cleaning or upgrades yet. |
+| 3 — Visual benchmark | Authored art pass built by code in Blender (`docs/ASSET_PIPELINE.md`): modelled restaurant with Cycles-baked GI lightmaps, AO and box-projected reflection probes; hero food with cooking-state shaders; stocked props; skin-textured first-person hands; rigged teammates and six walk-in customer looks. Recorded audio and review on real GPUs/iPad outstanding. |
+| 4 — Restaurant shift | 16 recipes in three unlock tiers, modifiers, scoring, ledger overlay. Walk-in customers: each ticket prints when its customer reaches the counter, they collect at the pickup shelf and leave (or give up). No fries, drinks, cleaning or upgrades yet. |
 | 5 — Release hardening | Deployment stack, backups and smoke test exist; measurements, physical-device and load testing outstanding. |
 
 See `KNOWN_LIMITATIONS.md` for the full list.
@@ -124,8 +124,9 @@ marked with `placeholder` mesh metadata so they can be audited.
 
 ## Stage 4 — restaurant shift (partially scaffolded)
 
-Customers with queue reservations, fries, drinks, cleaning, stock purchasing, upgrades,
-ledger UI, double/mushroom burgers, modifiers, player-count pacing.
+Done: walk-in customers tied to their tickets (counter spots, pickup hand-over, patience),
+double/mushroom burgers, modifiers, player-count pacing. Remaining: queueing and seated diners,
+fries, drinks, cleaning, stock purchasing, upgrades, in-world ledger UI.
 
 ## Stage 5 — release hardening
 

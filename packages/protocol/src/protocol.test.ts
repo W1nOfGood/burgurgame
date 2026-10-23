@@ -28,6 +28,18 @@ describe("message validation", () => {
     expect(placeSchema.safeParse({ cmd: 4, point: { x: 1e9, y: 0.9, z: 4.4 } }).success).toBe(false);
   });
 
+  it("accepts the angles of a player who has turned around many times", () => {
+    // Camera yaw accumulates while looking around; after a few full turns every place used to
+    // come back "Invalid request".
+    const point = { x: 0, y: 0.9, z: 4.4 };
+    expect(placeSchema.safeParse({ cmd: 5, point, yaw: Math.PI * 7 }).success).toBe(true);
+    expect(placeSchema.safeParse({ cmd: 5, point, yaw: -Math.PI * 31 }).success).toBe(true);
+    expect(placeSchema.safeParse({ cmd: 5, point, yaw: Number.NaN }).success).toBe(false);
+    const sample = { seq: 1, mx: 0, mz: 0, yaw: 0, pitch: 0, buttons: 0 };
+    expect(inputSchema.safeParse({ samples: [sample], rotYaw: Math.PI * 9 }).success).toBe(true);
+    expect(inputSchema.safeParse({ samples: [sample], rotYaw: Infinity }).success).toBe(false);
+  });
+
   it("requires the current protocol version to join", () => {
     expect(joinOptionsSchema.safeParse({ protocol: PROTOCOL_VERSION, name: "Sam", platform: "touch" }).success).toBe(true);
     expect(joinOptionsSchema.safeParse({ protocol: PROTOCOL_VERSION + 1, name: "Sam", platform: "touch" }).success).toBe(false);

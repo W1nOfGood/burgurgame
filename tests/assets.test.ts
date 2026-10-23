@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DISPENSERS, ITEM_KINDS } from "@ahb/data";
+import { CUSTOMER_LOOKS, DISPENSERS, ITEM_KINDS } from "@ahb/data";
 
 /**
  * Guards the Blender-built art shipped in apps/client/public/art (docs/ASSET_PIPELINE.md):
@@ -92,5 +92,16 @@ describe("authored art", () => {
     const cn = names(crew);
     for (const b of ["hips", "spine", "chest", "neck", "head", "thigh_l", "shin_r", "upperarm_l", "forearm_r", "crew_cap"]) expect(cn.has(b), b).toBe(true);
     expect(crew.skins?.length).toBe(1);
+  });
+
+  it("customers: every look is a skinned person on the crew's bones, with a takeaway bag", () => {
+    for (const look of CUSTOMER_LOOKS) {
+      const doc = gltf(`customer_${look.id}.gltf`);
+      const n = names(doc);
+      expect(n.has(`customer_${look.id}`), `armature of ${look.id}`).toBe(true);
+      for (const b of ["hips", "chest", "head", "thigh_l", "shin_r", "foot_l", "upperarm_r", "forearm_l", "hand_r"]) expect(n.has(b), `${look.id} ${b}`).toBe(true);
+      expect([...n].some((x) => x.startsWith("takeaway_bag")), `${look.id} bag`).toBe(true);
+      expect(doc.skins?.length, look.id).toBe(1);
+    }
   });
 });

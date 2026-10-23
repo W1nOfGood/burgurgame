@@ -5,7 +5,7 @@ import { INTERACTION, NET } from "@ahb/data";
  * Client → server intents. TypeScript types do not validate untrusted network input, so every
  * message is checked with these runtime schemas at the server boundary (spec §3, §14).
  */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 export const MSG = {
   input: "input",
@@ -38,12 +38,17 @@ const id = z.string().min(1).max(32).regex(/^[A-Za-z0-9_-]+$/);
 /** Client-generated, per-session increasing command id used for deduplication. */
 const cmd = z.number().int().min(1).max(0xffffffff);
 const point = z.object({ x: finite(-50, 50), y: finite(-10, 10), z: finite(-50, 50) });
+/**
+ * An angle in radians. Camera yaw accumulates as the player turns, so any finite value is
+ * accepted (the server wraps it); a narrow range here rejected every place after a few turns.
+ */
+const angle = finite(-1e4, 1e4);
 
 export const moveSampleSchema = z.object({
   seq: z.number().int().min(0).max(0xffffffff),
   mx: finite(-1, 1),
   mz: finite(-1, 1),
-  yaw: finite(-1e4, 1e4),
+  yaw: angle,
   pitch: finite(-1.6, 1.6),
   buttons: z.number().int().min(0).max(255),
 });
@@ -53,7 +58,7 @@ export const inputSchema = z.object({
   /** Desired hold distance for the held item. */
   hold: finite(INTERACTION.holdDistanceMin, INTERACTION.holdDistanceMax).optional(),
   /** Held-object rotation offsets (radians) chosen with the rotate control. */
-  rotYaw: finite(-Math.PI * 4, Math.PI * 4).optional(),
+  rotYaw: angle.optional(),
   rotPitch: finite(-Math.PI, Math.PI).optional(),
 });
 
@@ -68,7 +73,7 @@ export const placeSchema = z.object({
   point,
   /** Item whose stack should receive the held item, if placing onto food or a tray. */
   onto: id.optional(),
-  yaw: finite(-Math.PI * 4, Math.PI * 4).optional(),
+  yaw: angle.optional(),
 });
 
 export const cmdOnlySchema = z.object({ cmd });
