@@ -10,7 +10,7 @@
   "dining": {
    "lightmap": "lm_dining.webp",
    "ao": "ao_dining.webp",
-   "scale": 3.3755,
+   "scale": 3.3618,
    "size": 2048
   },
   "exterior": {

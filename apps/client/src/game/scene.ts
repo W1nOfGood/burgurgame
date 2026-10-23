@@ -859,8 +859,9 @@ export class RestaurantView {
     }
     const ease = open * open * (3 - 2 * open);
     const swing = ease * 1.35;
-    this.doorLeaves[0]!.rotation.y = this.doorLeaves[0]!.metadata.restYaw + swing;
-    this.doorLeaves[1]!.rotation.y = this.doorLeaves[1]!.metadata.restYaw - swing;
+    // Measured in the game: these signs swing the free edges toward −z, the street.
+    this.doorLeaves[0]!.rotation.y = this.doorLeaves[0]!.metadata.restYaw - swing;
+    this.doorLeaves[1]!.rotation.y = this.doorLeaves[1]!.metadata.restYaw + swing;
   }
 
   registerCasters(meshes: Mesh[]): void {
