@@ -205,7 +205,7 @@ def dress_for_hero() -> None:
         k = objs["knob"] if i == 0 else bl.duplicate(objs["knob"], f"knob_{i}")
         k.location = bl.G(z["knob"][0], z["knob"][1], 4.157)
     for d in LAYOUT["DISPENSERS"]:
-        o = objs.get(f"bin_{d['id']}")
+        o = objs.get(d["id"] if d["id"].startswith("bin_") else f"bin_{d['id']}")
         if o is not None:
             o.location = bl.G(d["center"][0], 0.972 if d["center"][2] > 3 else 0.952, d["center"][2])
     dr = LAYOUT["CHILLER_DRAWER"]
@@ -241,6 +241,9 @@ def dress_for_hero() -> None:
     sp = bl.duplicate(by_food["spatula"], "island_spatula", linked=True)
     sp.location = bl.G(0.95, 0.93, 4.12)
     sp.rotation_euler.z = 0.4
+    # Pan fills and drawer patties are copies of the hidden food templates; show what was placed.
+    for o in objs.values():
+        o.hide_render = False
     for o in bpy.data.objects:
         if o.name.startswith(("grill_", "pass_", "island_", "knob")):
             o.hide_render = False
