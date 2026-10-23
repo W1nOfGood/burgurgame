@@ -205,7 +205,7 @@ export class FoodLibrary {
       registered = true;
     }
     const lib = new FoodLibrary(scene);
-    const container: AssetContainer = await LoadAssetContainerAsync("food.gltf", scene, { rootUrl: BASE });
+    const container: AssetContainer = await LoadAssetContainerAsync("food.gltf", scene, { rootUrl: ART_BASE });
     container.addAllToScene();
     const root = container.meshes.find((m) => m.name === "__root__");
     // Bake the glTF handedness conversion into each item's vertices so clones can be posed

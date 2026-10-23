@@ -113,7 +113,7 @@ export async function loadBakedEnvironment(scene: Scene, preset: GraphicsPreset)
     registerBuiltInLoaders();
     loadersRegistered = true;
   }
-  const container = await LoadAssetContainerAsync("restaurant.gltf", scene, { rootUrl: BASE });
+  const container = await LoadAssetContainerAsync("restaurant.gltf", scene, { rootUrl: ART_BASE });
 
   const probes: Record<string, CubeTexture> = {};
   for (const [name, p] of Object.entries(manifest.probes)) probes[name] = probeTexture(scene, p);

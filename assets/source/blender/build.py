@@ -1,4 +1,4 @@
-"""Builds every authored asset into apps/client/public/assets.
+"""Builds every authored asset into apps/client/public/art.
 
     python assets/source/blender/build.py            # everything (the restaurant bake is long)
     python assets/source/blender/build.py --fast     # half-res, low-sample bake for iteration

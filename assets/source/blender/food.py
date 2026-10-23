@@ -24,11 +24,11 @@ from mathutils import Vector, noise  # noqa: E402
 
 from ahb import bl, foodtex, kit  # noqa: E402
 from ahb.graphics import build_all as build_graphics  # noqa: E402
-from ahb.library import BUILD, ROOT  # noqa: E402
+from ahb.library import ART, BUILD, ROOT  # noqa: E402
 
 LAYOUT = json.load(open(os.path.join(ROOT, "assets", "source", "layout.json")))
 ITEMS = LAYOUT["ITEMS"]
-OUT = os.path.join(ROOT, "apps", "client", "public", "assets", "food")
+OUT = os.path.join(ART, "food")
 
 
 # ----------------------------------------------------------------------------------------------
@@ -683,6 +683,9 @@ def preview(objs) -> None:
     grid = [["patty", "patty_seared", "veggie_patty", "bun_bottom", "bun_top"], ["cheese", "swiss", "lettuce", "tomato", "onion"], ["pickle", "jalapeno", "bacon", "bacon_crisp", "egg"], ["mushroom"]]
     by["patty_seared"] = seared
     by["bacon_crisp"] = crisp
+    # Park everything outside the frame first; only the grid items come back.
+    for o in by.values():
+        o.location = bl.G(5, 0, 5)
     for r, row in enumerate(grid):
         for c, name in enumerate(row):
             o = by[name]
@@ -720,7 +723,7 @@ def main() -> None:
         return
     for o in objs:
         o.location = (0, 0, 0)
-    bl.export_gltf(os.path.join(OUT, "food.gltf"), objs, image_format="WEBP", quality=86)
+    bl.export_gltf(os.path.join(ART, "food.gltf"), objs, image_format="WEBP", quality=86)
     # Cooked-state textures the client blends towards (not referenced by the glTF itself).
     from PIL import Image
 

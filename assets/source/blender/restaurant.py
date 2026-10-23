@@ -26,11 +26,11 @@ import dining  # noqa: E402
 import exterior  # noqa: E402
 import kitchen  # noqa: E402
 from ahb.kit import aabb, area_light, emitter, floor_rect, point_light, quad, spot_light, wall_rect  # noqa: E402
-from ahb.library import BUILD, ROOT, material, size_of  # noqa: E402
+from ahb.library import ART, BUILD, ROOT, material, size_of  # noqa: E402
 
 LAYOUT = json.load(open(os.path.join(ROOT, "assets", "source", "layout.json")))
 BOX = {b["id"]: b for b in LAYOUT["BOXES"]}
-OUT = os.path.join(ROOT, "apps", "client", "public", "assets", "restaurant")
+OUT = os.path.join(ART, "restaurant")
 PREVIEW = os.path.join(BUILD, "preview")
 
 
@@ -391,7 +391,7 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
         b.inputs["Transmission Weight"].default_value = 0.0
         b.inputs["Alpha"].default_value = 0.12
         gm.surface_render_method = "BLENDED"
-    bl.export_gltf(os.path.join(OUT, "restaurant.gltf"), [*joined.values(), *unbaked], image_format="WEBP", quality=86)
+    bl.export_gltf(os.path.join(ART, "restaurant.gltf"), [*joined.values(), *unbaked], image_format="WEBP", quality=86)
     json.dump(manifest, open(os.path.join(OUT, "restaurant.json"), "w"), indent=1)
     print("[export] done", OUT)
 

@@ -110,7 +110,7 @@ export class FirstPersonHands {
 
   /** Swaps the stand-in mittens for the rigged, gloved hands from characters.py. */
   private async loadAuthored(scene: Scene): Promise<void> {
-    const container = await loadContainer(scene, "hands.gltf", "characters");
+    const container = await loadContainer(scene, "hands.gltf");
     container.addAllToScene();
     const root = container.meshes.find((m) => m.name === "__root__");
     if (!root) throw new Error("hands.gltf: no root");

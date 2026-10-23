@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const buildDir = join(root, "assets", "build");
-const outDir = join(root, "apps", "client", "public", "assets", "restaurant");
+const outDir = join(root, "apps", "client", "public", "art", "restaurant");
 
 const entry = `
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";

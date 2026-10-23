@@ -9,6 +9,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 BUILD = os.path.join(ROOT, "assets", "build")
+# Shipped art. Every glTF sits at this root so its texture URIs ("textures/x.webp") stay inside
+# the asset's own folder: Babylon's loader rejects URIs containing "..".
+ART = os.path.join(ROOT, "apps", "client", "public", "art")
 TEX_DIR = os.path.join(BUILD, "textures")
 FONTS = os.path.join(ROOT, "assets", "source", "fonts")
 

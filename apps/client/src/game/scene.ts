@@ -261,7 +261,7 @@ export class RestaurantView {
   /** Swaps procedural stand-ins for the Blender-authored props (knobs, drawer, pans, sign). */
   private async loadProps(): Promise<void> {
     const scene = this.scene;
-    const container = await LoadAssetContainerAsync("props.gltf", scene, { rootUrl: `${ART_BASE}props/` });
+    const container = await LoadAssetContainerAsync("props.gltf", scene, { rootUrl: ART_BASE });
     container.addAllToScene();
     const gltfRoot = container.meshes.find((mm) => mm.name === "__root__");
     if (!gltfRoot) throw new Error("props.gltf: no root");
@@ -288,12 +288,13 @@ export class RestaurantView {
       h.rotation.y = ry;
       return h;
     };
-    // Grill knobs.
+    // Grill knobs. The knob has two materials, so the loader may hand back a TransformNode with
+    // one child mesh per primitive rather than a single Mesh; clone() copies either form.
     const knob = nodes.get("knob");
-    if (knob instanceof Mesh) {
+    if (knob instanceof TransformNode) {
       GRILL_ZONES.forEach((zone, i) => {
         const h = holder(`knob_vis_${i}`, zone.knob[0], zone.knob[1], 4.157);
-        mount(i === 0 ? knob : knob.clone(`knob_${i}`, null)!, h);
+        mount(i === 0 ? knob : knob.clone(`knob_authored_${i}`, null)!, h);
         this.knobVisuals.push(h);
       });
     }

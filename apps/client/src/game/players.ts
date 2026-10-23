@@ -17,7 +17,7 @@ let crewContainer: AssetContainer | null = null;
 
 /** Loads the rigged crew member (characters.py); avatars upgrade from their stand-ins. */
 export async function loadCrew(scene: Scene): Promise<void> {
-  crewContainer = await loadContainer(scene, "crew.gltf", "characters");
+  crewContainer = await loadContainer(scene, "crew.gltf");
 }
 
 interface CrewRig {

@@ -22,10 +22,9 @@ import bpy  # noqa: E402
 import food  # noqa: E402
 from ahb import bl, kit  # noqa: E402
 from ahb.kit import aabb  # noqa: E402
-from ahb.library import BUILD, ROOT, font  # noqa: E402
+from ahb.library import ART, BUILD, ROOT, font  # noqa: E402
 
 LAYOUT = json.load(open(os.path.join(ROOT, "assets", "source", "layout.json")))
-OUT = os.path.join(ROOT, "apps", "client", "public", "assets", "props")
 
 
 def knob(m) -> bpy.types.Object:
@@ -293,8 +292,8 @@ def main() -> None:
         bl.camera("cam", (0.0, 1.1, -1.4), (0.0, 0.0, 0.1), lens=30)
         bl.render(os.path.join(BUILD, "preview", "props.jpg"), width=1280, height=720, samples=96, exposure=1.0)
         return
-    bl.export_gltf(os.path.join(OUT, "props.gltf"), objs, image_format="WEBP", quality=86)
-    print("[props] exported", OUT)
+    bl.export_gltf(os.path.join(ART, "props.gltf"), objs, image_format="WEBP", quality=86)
+    print("[props] exported", ART)
 
 
 if __name__ == "__main__":

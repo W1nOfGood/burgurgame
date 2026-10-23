@@ -30,7 +30,7 @@ assets/source/
 python3.13 -m venv .venv-assets
 .venv-assets/bin/pip install bpy==5.2.3 numpy scipy pillow pyoidn==2.5.1.0 scikit-image==0.26.0
 
-ASSET_PYTHON=.venv-assets/bin/python npm run assets         # everything (~1.5 h on 4 cores)
+ASSET_PYTHON=.venv-assets/bin/python npm run assets         # everything (~85 min on 4 cores)
 ASSET_PYTHON=.venv-assets/bin/python npm run assets:fast    # half-res, low-sample bake
 ASSET_PYTHON=.venv-assets/bin/python sh scripts/assets.sh food props   # selected targets
 ```
@@ -41,6 +41,20 @@ Targets: `layout` (export `packages/data` to `layout.json`), `restaurant` (model
 renders denoised Cycles look-development shots into `assets/build/preview/` with the same ACES
 tone mapping the game uses. Intermediate files (texture sets, probes, previews) live in
 `assets/build/` and are not committed.
+
+The shipped art in `apps/client/public/art/` is committed so the game runs without Blender:
+
+```
+art/
+  restaurant.gltf/.bin   food.gltf/.bin   props.gltf/.bin   hands.gltf/.bin   crew.gltf/.bin
+  textures/              WebP texture sets shared by every glTF (one download, one GPU copy)
+  restaurant/            restaurant.json, lm_*/ao_* lightmaps, probe_*.env
+  food/                  cooked textures and progress maps loaded by the cooking shader
+```
+
+Every glTF sits at the root so its texture URIs (`textures/steel_albedo.webp`) stay inside its
+own folder: Babylon's loader rejects URIs containing `..`, and `tests/assets.test.ts` checks
+for it. `optimize.py` (the last build target) caps texture sizes for tablet GPU memory.
 
 ## How the restaurant is lit
 
@@ -97,10 +111,14 @@ grips, walking, reaching, crouching or looking.
 
 | Asset | Triangles | Notes |
 | --- | --- | --- |
-| Restaurant (baked + unbaked) | see `restaurant.json` / glTF | ~3 draw calls per material per region |
-| Food item | 1–6 k | instanced in pans and drawer |
-| First-person hands | ~19 k (both) | always visible |
-| Crew member | ~33 k | per teammate |
+| Restaurant (baked + unbaked) | 154 k | 6 nodes after joining by material and lightmap region |
+| Food library | 36 k for 21 items + sauce drizzle | 0.4–6 k per item (sesame bun top is the largest) |
+| Props | 19 k unique, 87 k drawn | pans hold instanced copies at 32 % detail |
+| First-person hands | 19 k (both) | always visible |
+| Crew member | 33 k | per teammate |
 
-Texture sets are 1024² (512² for small items). Lightmaps are 2048² (kitchen, dining) and
-1024² (exterior); AO maps are half size.
+Download: 18 MB in total before gzip (restaurant 9 MB, textures 3 MB, characters 4 MB,
+food 2 MB). Estimated GPU texture memory after `optimize.py`: 224 MB. Texture sets are 1024²
+for large surfaces and hero food, 512² otherwise. Lightmaps are 2048² (kitchen, dining) and
+1024² (exterior); AO maps are half size. The full-quality bake takes about 80 minutes on four
+CPU cores (Cycles, 384 samples); `--fast` takes about 5.

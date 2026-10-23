@@ -16,12 +16,12 @@ import { ART_BASE } from "./art.js";
 
 let registered = false;
 
-export async function loadContainer(scene: Scene, file: string, dir: string): Promise<AssetContainer> {
+export async function loadContainer(scene: Scene, file: string): Promise<AssetContainer> {
   if (!registered) {
     registerBuiltInLoaders();
     registered = true;
   }
-  return LoadAssetContainerAsync(file, scene, { rootUrl: `${ART_BASE}${dir}/` });
+  return LoadAssetContainerAsync(file, scene, { rootUrl: ART_BASE });
 }
 
 /** Parents a glTF node under ``holder`` through a handedness converter (like glTF __root__). */

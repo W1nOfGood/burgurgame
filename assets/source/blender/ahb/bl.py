@@ -749,7 +749,7 @@ def render(path: str, *, width: int = 1280, height: int = 720, samples: int = 64
     Image.fromarray((out * 255 + 0.5).astype(np.uint8)).save(path, quality=90)
 
 
-def export_gltf(path: str, objs: Iterable[bpy.types.Object], *, image_format: str = "WEBP", quality: int = 88, separate: bool = True, texture_dir: str = "../textures") -> None:
+def export_gltf(path: str, objs: Iterable[bpy.types.Object], *, image_format: str = "WEBP", quality: int = 88, separate: bool = True, texture_dir: str = "textures") -> None:
     """glTF + .bin with textures in a folder shared by every asset (deduplicated by name)."""
     ctx = bpy.context
     objs = list(objs)

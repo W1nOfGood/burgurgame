@@ -21,9 +21,8 @@ import bmesh  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
 from ahb import bl, kit  # noqa: E402
-from ahb.library import BUILD, ROOT  # noqa: E402
+from ahb.library import ART, BUILD  # noqa: E402
 
-OUT = os.path.join(ROOT, "apps", "client", "public", "assets", "characters")
 
 
 # ----------------------------------------------------------------------------------------------
@@ -577,9 +576,9 @@ def main() -> None:
         bl.camera("cam", (0.0, 1.45, 0.4), (0.0, 1.1, 2.2), lens=28)
         bl.render(os.path.join(BUILD, "preview", "characters.jpg"), width=1280, height=720, samples=96, exposure=1.0)
         return
-    bl.export_gltf(os.path.join(OUT, "hands.gltf"), right + left, image_format="WEBP", quality=86)
-    bl.export_gltf(os.path.join(OUT, "crew.gltf"), crew, image_format="WEBP", quality=86)
-    print("[characters] exported", OUT)
+    bl.export_gltf(os.path.join(ART, "hands.gltf"), right + left, image_format="WEBP", quality=86)
+    bl.export_gltf(os.path.join(ART, "crew.gltf"), crew, image_format="WEBP", quality=86)
+    print("[characters] exported", ART)
 
 
 if __name__ == "__main__":
