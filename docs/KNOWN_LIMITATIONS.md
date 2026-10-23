@@ -28,7 +28,10 @@ Honest status against the specification. Nothing below is claimed as done.
 - **Characters** are stylised-real: realistic proportions, but teammates wear caps and
   food-safety masks rather than showing a fully modelled face, and the rig is driven
   procedurally (walk, reach, crouch, look, finger curl) — there are no motion-captured or
-  keyframed clips, no facial animation and no cloth simulation.
+  keyframed clips, no facial animation and no cloth simulation. First-person hands have no
+  wrist joint: each forearm is aimed at its shoulder and the hand follows it.
+- **Grilled onion** keeps its raw look; only patties, buns, bacon, mushrooms and egg white
+  have cooked textures.
 - **Lighting is static.** Global illumination, AO and reflections are baked for the night
   layout; moving equipment in `packages/data` requires rebuilding the restaurant. Dynamic
   objects get one real-time key light with shadows plus the probes, so they never bounce
