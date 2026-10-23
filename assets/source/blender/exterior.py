@@ -165,9 +165,23 @@ def build(s) -> None:
     s.add(EX, floor_rect("edge_line_near", -14.0, 14.0, -10.35, -10.25, paint_y, white, uv=1.0))
     s.add(EX, floor_rect("edge_line_far", -14.0, 14.0, -17.55, -17.45, paint_y, white, uv=1.0))
     s.add(EX, bl.cylinder("manhole", (2.2, -0.147, -12.4), 0.33, 0.006, m["steel_worn"], segments=32))
-    # Our facade outer skin (seen in window reveals) and a door-side wall light.
-    s.add(EX, wall_rect("our_facade_l", "z", -6.2, -8.0, -1.0, 0.0, 3.4, -1, m["brick_dark"]))
-    s.add(EX, wall_rect("our_facade_r", "z", -6.2, 1.0, 8.0, 0.0, 3.4, -1, m["brick_dark"]))
+    # Our facade outer skin, open over the storefront glazing (sills 0.9 m, heads 2.4 m, door to
+    # 2.5 m, matching restaurant.storefront), with jambs back to the inner wall and a stone sill.
+    rb = s.layout["ROOM_BOUNDS"]
+    X0, X1, zi, zo = rb["minX"], rb["maxX"], rb["minZ"], -6.2
+    sill, head, door_h = 0.9, 2.4, 2.5
+    for side, (w0, w1, o0, o1) in {"l": (-8.0, -1.0, X0, -1.0), "r": (1.0, 8.0, 1.0, X1)}.items():
+        s.add(EX, wall_rect(f"our_facade_{side}_low", "z", zo, w0, w1, 0.0, sill, -1, m["brick_dark"]))
+        s.add(EX, wall_rect(f"our_facade_{side}_high", "z", zo, w0, w1, head, 3.4, -1, m["brick_dark"]))
+        end0, end1 = (w0, o0) if side == "l" else (o1, w1)
+        s.add(EX, wall_rect(f"our_facade_{side}_end", "z", zo, end0, end1, sill, head, -1, m["brick_dark"]))
+        outer = o0 if side == "l" else o1
+        s.add(EX, wall_rect(f"our_jamb_{side}", "x", outer, zo, zi, sill, head, 1 if side == "l" else -1, m["brick_dark"]))
+        s.add(EX, aabb(f"our_sill_{side}", o0, sill - 0.05, zo - 0.05, o1, sill, -6.12, m["sidewalk"], bevel=0.004, cull_bottom=False))
+        door_edge = -1.0 if side == "l" else 1.0
+        s.add(EX, wall_rect(f"our_door_jamb_{side}", "x", door_edge, zo, zi, 0.0, sill, 1 if side == "l" else -1, m["brick_dark"]))
+    s.add(EX, wall_rect("our_facade_door_head", "z", zo, -1.0, 1.0, door_h, 3.4, -1, m["brick_dark"]))
+    s.add(EX, floor_rect("our_door_head_reveal", -1.0, 1.0, zo, zi, door_h, m["brick_dark"], down=True))
     for x in (-1.35, 1.35):
         s.add(EX, bl.lathe(f"door_lamp_{x}", [(0.0, -0.12), (0.07, -0.1), (0.08, 0.0), (0.07, 0.1), (0.0, 0.12)], (x, 2.55, -6.32), bl.solid("opal_glass", (0.95, 0.9, 0.82), 0.3, emission=(1.0, 0.8, 0.55), emission_strength=3.0), segments=20))
         point_light(f"door_lamp_light_{x}", (x, 2.55, -6.45), 40.0, (1.0, 0.78, 0.5), radius=0.07)
