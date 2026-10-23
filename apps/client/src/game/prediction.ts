@@ -14,6 +14,8 @@ export class LocalPlayer {
   private outbox: MoveSample[] = [];
   readonly offset = { x: 0, y: 0, z: 0 };
   lastCorrection = 0;
+  /** Distance the last reconcile moved the prediction (0 when it agreed with the server). */
+  lastError = 0;
 
   constructor(R: Rapier, start: V3) {
     this.pw = createPhysicsWorld(R);
@@ -53,6 +55,7 @@ export class LocalPlayer {
     const ey = before.y - after.y;
     const ez = before.z - after.z;
     const err = Math.hypot(ex, ey, ez);
+    this.lastError = err;
     if (err > 0.5) {
       // Teleport-sized disagreement (respawn, restore, server placement): accept it outright.
       // Normal prediction error is millimetres; smoothing half a metre would only lag the view.

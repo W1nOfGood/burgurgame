@@ -520,7 +520,40 @@ export class Kitchen {
     return eyePosition(p.motor.state, p.crouch);
   }
 
+  /** Runs the player's oldest queued movement sample. */
+  private runSample(p: PlayerRt, dt: number): void {
+    const sample = p.queue.shift();
+    if (!sample) return;
+    p.credit -= 1;
+    const held = this.heldItem(p);
+    const factor = held?.kind === "tray" ? PLAYER.carrySpeedFactor : 1;
+    const m = p.motor.step(sample, dt, factor);
+    p.crouch = (sample.buttons & BUTTON_CROUCH) !== 0;
+    p.s.ack = sample.seq;
+    p.s.yaw = sample.yaw;
+    p.s.pitch = sample.pitch;
+    p.s.crouch = p.crouch;
+    p.s.x = m.x;
+    p.s.y = m.y;
+    p.s.z = m.z;
+    p.s.vx = m.vx;
+    p.s.vy = m.vy;
+    p.s.vz = m.vz;
+    p.s.grounded = m.grounded;
+  }
+
+  /**
+   * Before judging an action, runs the movement the player sent before it (still queued, as
+   * it arrives in bursts on long routes), so reach and line of sight use where they stood when
+   * they acted, not a few steps earlier. Still bounded by the real-time credit.
+   */
+  private catchUp(p: PlayerRt): void {
+    if (this.state.paused) return;
+    while (p.queue.length > 0 && p.credit >= 1) this.runSample(p, 1 / NET.tickHz);
+  }
+
   private canReach(p: PlayerRt, point: V3, extra = 0): IntentResult {
+    this.catchUp(p);
     const eye = this.eye(p);
     if (!withinReach(eye, point, extra)) return fail("That's out of reach");
     if (!hasLineOfSight(this.pw.castStatic, eye, point)) return fail("Something is in the way");
@@ -1192,26 +1225,7 @@ export class Kitchen {
     for (const p of this.players.values()) {
       p.credit = Math.min(NET.maxQueuedSamples, p.credit + 1);
       const n = p.queue.length > 8 ? NET.maxCatchUpSamplesPerTick : p.queue.length > 3 ? 2 : 1;
-      for (let i = 0; i < n && p.credit >= 1; i++) {
-        const sample = p.queue.shift();
-        if (!sample) break;
-        p.credit -= 1;
-        const held = this.heldItem(p);
-        const factor = held?.kind === "tray" ? PLAYER.carrySpeedFactor : 1;
-        const m = p.motor.step(sample, dt, factor);
-        p.crouch = (sample.buttons & BUTTON_CROUCH) !== 0;
-        p.s.ack = sample.seq;
-        p.s.yaw = sample.yaw;
-        p.s.pitch = sample.pitch;
-        p.s.crouch = p.crouch;
-        p.s.x = m.x;
-        p.s.y = m.y;
-        p.s.z = m.z;
-        p.s.vx = m.vx;
-        p.s.vy = m.vy;
-        p.s.vz = m.vz;
-        p.s.grounded = m.grounded;
-      }
+      for (let i = 0; i < n && p.credit >= 1 && p.queue.length > 0; i++) this.runSample(p, dt);
       if (p.s.hold !== p.hold) p.s.hold = p.hold;
     }
 

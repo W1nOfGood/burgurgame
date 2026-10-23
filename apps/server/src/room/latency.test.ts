@@ -107,6 +107,27 @@ describe("movement over a long, jittery route", () => {
     expect(worst).toBeLessThan(1e-9);
   });
 
+  it("judges reach from where the player was when they acted, not where the queue has got to", () => {
+    const { k, state, s } = setup();
+    // Walk toward the island, the samples arriving in one late burst, then grab at once.
+    const tray = [...state.items.entries()].find(([, it]) => it.kind === "tray")!;
+    const [trayId, t] = tray;
+    const client = new PlayerMotor(createPhysicsWorld(R, DT), { x: s.x, y: s.y, z: s.z });
+    const yaw = Math.atan2(t.x - s.x, t.z - s.z);
+    const samples: MoveSample[] = [];
+    // Up to ~1.8 s of walking, all of it still queued on the server (within its 2 s buffer).
+    for (let i = 0; i < 110; i++) {
+      const smp = { seq: i + 1, mx: 0, mz: 1, yaw, pitch: 0.6, buttons: 0 };
+      client.step(smp, DT, 1);
+      samples.push(smp);
+      if (Math.hypot(client.state.x - t.x, client.state.z - t.z) < 0.7) break;
+    }
+    for (let i = 0; i < samples.length; i += NET.maxSamplesPerMessage) k.pushInput("p1", { samples: samples.slice(i, i + NET.maxSamplesPerMessage) } as never);
+    const res = k.grabItem("p1", trayId, t.rev);
+    expect(res).toEqual({ ok: true });
+    expect(Math.hypot(s.x - client.state.x, s.z - client.state.z)).toBeLessThan(1e-9);
+  });
+
   it("still cannot be made to move faster than real time", () => {
     const { k } = setup();
     const motor = (k as unknown as { players: Map<string, { motor: PlayerMotor }> }).players.get("p1")!.motor;
