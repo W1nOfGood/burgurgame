@@ -17,7 +17,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
-TARGETS = ["layout", "restaurant", "env", "food", "props", "characters", "optimize"]
+TARGETS = ["layout", "restaurant", "env", "food", "props", "characters", "people", "optimize"]
 
 
 def run(cmd: list[str]) -> None:
@@ -39,7 +39,7 @@ def main() -> None:
             run([py, os.path.join(HERE, "restaurant.py")] + (["--fast"] if fast else []))
         elif t == "env":
             run(["node", "scripts/make-env.mjs"])
-        elif t in ("food", "props", "characters", "optimize"):
+        elif t in ("food", "props", "characters", "people", "optimize"):
             run([py, os.path.join(HERE, f"{t}.py")])
         else:
             raise SystemExit(f"unknown target {t}; choose from {TARGETS}")

@@ -19,7 +19,8 @@ assets/source/
                        exterior.py for the contents)
     food.py            food, tools and service items (item-local, per ITEMS shapes)
     props.py           knobs, drawer, stocked pans, tray stack, switch, neon OPEN sign
-    characters.py      rigged first-person hands and the crew member
+    characters.py      rigged first-person hands
+    people.py          the line cook (teammates) and six walk-in customers, dressed and rigged
     build.py           runs the targets in order
 ```
 
@@ -37,7 +38,7 @@ ASSET_PYTHON=.venv-assets/bin/python sh scripts/assets.sh food props   # selecte
 
 Targets: `layout` (export `packages/data` to `layout.json`), `restaurant` (model, bake, export),
 `env` (convert the HDR probes to Babylon `.env` in headless Chromium), `food`, `props`,
-`characters`. Every target also has a `--preview` mode (`python restaurant.py --preview`) that
+`characters`, `people`. Every target also has a `--preview` mode (`python restaurant.py --preview`) that
 renders denoised Cycles look-development shots into `assets/build/preview/` with the same ACES
 tone mapping the game uses. Intermediate files (texture sets, probes, previews) live in
 `assets/build/` and are not committed.
@@ -47,6 +48,7 @@ The shipped art in `apps/client/public/art/` is committed so the game runs witho
 ```
 art/
   restaurant.gltf/.bin   food.gltf/.bin   props.gltf/.bin   hands.gltf/.bin   crew.gltf/.bin
+  customer_<look>.gltf/.bin   one per customer look (student, office, nurse, worker, coat, varsity)
   textures/              WebP texture sets shared by every glTF (one download, one GPU copy)
   restaurant/            restaurant.json, lm_*/ao_* lightmaps, probe_*.env
   food/                  cooked textures and progress maps loaded by the cooking shader
@@ -99,10 +101,20 @@ function of the replicated values.
 
 ## Characters
 
-Hands and the crew member are sculpted as signed-distance fields (tapered phalanges, knuckle
-and joint bulges, palm pads, smooth blends only where anatomy blends), polygonised with marching
-cubes, decimated, and skinned by distance to bone segments with rules that stop neighbouring
-fingers or legs from sharing weights. The client drives bones procedurally
+Hands and people are sculpted as signed-distance fields (tapered phalanges, knuckle and joint
+bulges, palm pads, smooth blends only where anatomy blends), polygonised with marching cubes,
+decimated, and skinned by distance to bone segments with rules that stop neighbouring fingers
+or legs from sharing weights.
+
+`people.py` builds one parametric adult per `Spec` (sex, height, build, skin, hair, beard,
+hat, garments) on a shared skeleton: skull, brows, cheekbones and jaw; eyeballs behind
+almond-shaped lids; nose, lips on the dental arch, ears; shoulders that slope down to the
+acromion. Clothes are shells around the body with folds sculpted in (tops hang straight past
+the hips and over the trousers; hats are fitted to the skull clear of the hair), and the body
+keeps only the skin that shows. Hair and beards are shells that thin out and dip under the skin
+at the hairline, so the line is clean. Skin, hair and cloth are painted in texel space
+(`ahb/skin.py`) and normals baked in Cycles. The crew member and the six customer looks share
+the crew rig's bones, so teammates and customers are driven the same way. The client drives bones procedurally
 (`apps/client/src/game/rig.ts`): each joint's flex axis is derived from the rest pose and
 sign-checked against the direction its child should move, so no animation clips are needed for
 grips, walking, reaching, crouching or looking.
@@ -115,10 +127,13 @@ grips, walking, reaching, crouching or looking.
 | Food library | 36 k for 21 items + sauce drizzle | 0.4–6 k per item (sesame bun top is the largest) |
 | Props | 19 k unique, 87 k drawn | pans hold instanced copies at 32 % detail |
 | First-person hands | 19 k (both) | always visible |
-| Crew member | 33 k | per teammate |
+| Crew member | 43 k | per teammate |
+| Customers | 33–40 k | per look (six looks, loaded after you enter the kitchen) |
 
-Download: 18 MB in total before gzip (restaurant 9 MB, textures 3 MB, characters 4 MB,
-food 2 MB). Estimated GPU texture memory after `optimize.py`: 224 MB. Texture sets are 1024²
-for large surfaces and hero food, 512² otherwise. Lightmaps are 2048² (kitchen, dining) and
+Download: 29 MB in total before gzip (restaurant 9.5 MB with its lightmaps, characters 13 MB —
+hands 2, crew 2, the six customers 9 — textures 4 MB, food 2 MB). Customers stream in behind
+stand-ins once the kitchen is open, so they never hold up joining. Estimated GPU texture memory
+after `optimize.py`: 338 MB. Texture sets are 1024² for large surfaces and hero food, 512²
+otherwise; people get 512² colour for faces and large garments and 128–256² for the rest. Lightmaps are 2048² (kitchen, dining) and
 1024² (exterior); AO maps are half size. The full-quality bake takes about 80 minutes on four
 CPU cores (Cycles, 384 samples); `--fast` takes about 5.
