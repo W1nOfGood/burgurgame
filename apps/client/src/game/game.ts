@@ -194,7 +194,7 @@ export class Game {
     this.camera.fov = (settings.fov * Math.PI) / 180;
 
     this.restaurant = new RestaurantView(scene, settings.graphics);
-    this.hands = new FirstPersonHands(scene, this.camera, this.restaurant.materials);
+    this.hands = new FirstPersonHands(scene, this.camera, this.restaurant.materials, settings.graphics);
     this.setupPostProcessing(settings);
     this.smoke = settings.graphics === "low" ? null : new GrillSmoke(scene, settings.graphics);
     const envReady = this.restaurant.load();

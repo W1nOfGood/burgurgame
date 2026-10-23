@@ -22,8 +22,14 @@ ART = os.path.join(ROOT, "apps", "client", "public", "art")
 HERO_ALBEDO = {"subway_white", "tile_green", "quarry", "checker", "steel", "steel_worn", "griddle", "oak", "terrazzo", "plaster_cream", "plaster_white", "beef_raw", "beef_seared", "bun_crust", "bun_crumb", "bun_toasted", "brick", "walnut_slats", "tray_liner"}
 
 
+# First-person skin is on screen all the time and seen closest: full resolution colour and relief.
+SKIN = {"skin_hand_albedo": 2048, "skin_hand_normal": 2048, "skin_hand_orm": 1024, "skin_hand_thickness": 512}
+
+
 def cap_for(name: str) -> int:
     base = name.rsplit(".", 1)[0]
+    if base in SKIN:
+        return SKIN[base]
     for suffix in ("_albedo", "_normal", "_orm"):
         if base.endswith(suffix):
             mat = base[: -len(suffix)]

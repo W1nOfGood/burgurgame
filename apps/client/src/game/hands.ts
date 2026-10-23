@@ -1,10 +1,16 @@
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Texture } from "@babylonjs/core/Materials/Textures/texture";
+import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
+import "@babylonjs/core/Rendering/subSurfaceSceneComponent";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Camera } from "@babylonjs/core/Cameras/camera";
 import type { Scene } from "@babylonjs/core/scene";
 import type { GripPose } from "@ahb/data";
+import type { GraphicsPreset } from "../settings.js";
+import { ART_BASE } from "./art.js";
 import type { MaterialLibrary } from "./materials.js";
 import { BoneDriver, findNode, loadContainer, mountGltfNode } from "./rig.js";
 
@@ -50,8 +56,34 @@ const IDLE_R = aimed(new Vector3(0.17, -0.25, 0.4), SHOULDER_R, 0.35, 0.12);
 const IDLE_L = aimed(new Vector3(-0.17, -0.26, 0.39), SHOULDER_L, -0.35, 0.12);
 
 /**
+ * Skin shading for the authored hands (characters.py builds the maps): cavity occlusion from
+ * the ORM red channel, skin's lower reflectance (IOR 1.4), light passing through thin parts
+ * (fingers glow red at their edges when backlit) and, on the high preset, screen-space
+ * subsurface scattering that softens light across the skin the way blood and tissue do.
+ */
+function dressSkin(mat: PBRMaterial, scene: Scene, scattering: boolean): void {
+  if (mat.metallicTexture) {
+    mat.ambientTexture = mat.metallicTexture;
+    mat.useAmbientInGrayScale = true;
+  }
+  const ss = mat.subSurface;
+  ss.indexOfRefraction = 1.4;
+  ss.isTranslucencyEnabled = true;
+  ss.translucencyIntensity = 0.8;
+  ss.thicknessTexture = new Texture(`${ART_BASE}textures/skin_hand_thickness.webp`, scene);
+  ss.minimumThickness = 0;
+  ss.maximumThickness = 0.03;
+  ss.tintColor = new Color3(0.92, 0.3, 0.18);
+  ss.tintColorAtDistance = 0.005;
+  if (scattering && scene.enableSubSurfaceForPrePass()) {
+    ss.isScatteringEnabled = true;
+    ss.scatteringDiffusionProfile = new Color3(0.85, 0.38, 0.25);
+  }
+}
+
+/**
  * First-person hands parented to the camera. Placeholder mitten geometry with grip poses per
- * tool type (spec §5: tool-specific grip poses); rigged hero hands replace these in Stage 3.
+ * tool type (spec §5: tool-specific grip poses) until the rigged, skin-textured hands load.
  */
 export class FirstPersonHands {
   private readonly right: TransformNode;
@@ -64,7 +96,7 @@ export class FirstPersonHands {
   private targetL: HandPose = IDLE_L;
   private bobPhase = 0;
 
-  constructor(scene: Scene, camera: Camera, lib: MaterialLibrary) {
+  constructor(scene: Scene, camera: Camera, lib: MaterialLibrary, private readonly preset: GraphicsPreset) {
     const skin = lib.solid("fp_skin", [0.86, 0.64, 0.5], 0.55);
     const sleeve = lib.solid("fp_sleeve", [0.92, 0.9, 0.86], 0.8);
     const cuff = lib.solid("fp_cuff", [0.75, 0.15, 0.12], 0.7);
@@ -124,10 +156,13 @@ export class FirstPersonHands {
     void this.loadAuthored(scene).catch((err) => console.warn("Authored hands unavailable; keeping stand-ins", err));
   }
 
-  /** Swaps the stand-in mittens for the rigged, gloved hands from characters.py. */
+  /** Swaps the stand-in mittens for the rigged, skin-textured hands from characters.py. */
   private async loadAuthored(scene: Scene): Promise<void> {
     const container = await loadContainer(scene, "hands.gltf");
     container.addAllToScene();
+    for (const mat of container.materials) {
+      if (mat.name === "skin_hand") dressSkin(mat as PBRMaterial, scene, this.preset === "high");
+    }
     const root = container.meshes.find((m) => m.name === "__root__");
     if (!root) throw new Error("hands.gltf: no root");
     const make = (side: "R" | "L", pivot: TransformNode): AuthoredHand => {

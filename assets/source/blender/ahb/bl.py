@@ -728,8 +728,12 @@ def aces(rgb: np.ndarray, exposure: float = 1.0) -> np.ndarray:
     return np.where(c <= 0.0031308, c * 12.92, 1.055 * np.power(c, 1 / 2.4) - 0.055)
 
 
-def render(path: str, *, width: int = 1280, height: int = 720, samples: int = 64, exposure: float = 1.0, denoise_preview: bool = True) -> None:
-    """Renders linear HDR, denoises with OIDN and tone maps like the game (ACES)."""
+def render(path: str, *, width: int = 1280, height: int = 720, samples: int = 64, exposure: float = 1.0, denoise_preview: bool = True, guided: bool = False) -> None:
+    """Renders linear HDR, denoises with OIDN and tone maps like the game (ACES).
+
+    ``guided`` denoises inside Cycles with albedo and normal guide passes, which keeps texture
+    detail (pores, fine creases) that a beauty-only denoise smooths away.
+    """
     from PIL import Image
 
     scene = bpy.context.scene
@@ -737,6 +741,11 @@ def render(path: str, *, width: int = 1280, height: int = 720, samples: int = 64
     scene.render.resolution_y = height
     scene.render.resolution_percentage = 100
     scene.cycles.samples = samples
+    scene.cycles.use_denoising = guided
+    if guided:
+        scene.cycles.denoiser = "OPENIMAGEDENOISE"
+        scene.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"
+        scene.cycles.denoising_prefilter = "ACCURATE"
     scene.view_settings.exposure = 0.0
     scene.view_settings.view_transform = "Standard"
     scene.render.image_settings.file_format = "OPEN_EXR"
@@ -748,13 +757,13 @@ def render(path: str, *, width: int = 1280, height: int = 720, samples: int = 64
     px = np.array(img.pixels[:], dtype=np.float32).reshape(height, width, 4)[::-1, :, :3].copy()
     bpy.data.images.remove(img)
     os.remove(exr)
-    if denoise_preview:
+    if denoise_preview and not guided:
         px = denoise(px, lightmap=False)
     out = aces(px, exposure)
     Image.fromarray((out * 255 + 0.5).astype(np.uint8)).save(path, quality=90)
 
 
-def export_gltf(path: str, objs: Iterable[bpy.types.Object], *, image_format: str = "WEBP", quality: int = 88, separate: bool = True, texture_dir: str = "textures") -> None:
+def export_gltf(path: str, objs: Iterable[bpy.types.Object], *, image_format: str = "WEBP", quality: int = 88, separate: bool = True, texture_dir: str = "textures", tangents: bool = False) -> None:
     """glTF + .bin with textures in a folder shared by every asset (deduplicated by name)."""
     ctx = bpy.context
     objs = list(objs)
@@ -774,7 +783,7 @@ def export_gltf(path: str, objs: Iterable[bpy.types.Object], *, image_format: st
         export_apply=True,
         export_texcoords=True,
         export_normals=True,
-        export_tangents=False,
+        export_tangents=tangents,
         export_materials="EXPORT",
         export_image_format=image_format,
         export_image_quality=quality,
