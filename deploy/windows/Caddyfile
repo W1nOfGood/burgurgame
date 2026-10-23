@@ -1,0 +1,57 @@
+# After Hours Burger - Caddy sites for a Windows Server VPS (docs/DEPLOYMENT_WINDOWS.md).
+# Replace example.com with your domain. Caddy obtains and renews the HTTPS certificates for both
+# names itself (ports 80 and 443 must be reachable) and redirects HTTP to HTTPS.
+#
+# Caddy keeps no access log unless asked, so the realtime WebSocket URLs (which carry the guest
+# credential) are never written to disk.
+
+game.example.com {
+	root * C:/www/after-hours
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	# HTML always revalidates so new deployments are picked up.
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+
+	# Fingerprinted build output can be cached for a long time (only files that exist: a 404
+	# must not be cached for a year).
+	@assets {
+		path /assets/*
+		file
+	}
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# Blender-built art keeps stable file names between builds: always revalidate (ETag), so a
+	# deployment never mixes new code with stale models, lightmaps or probes.
+	header /art/* Cache-Control "no-cache"
+
+	# Types the Windows registry does not know.
+	@gltf path *.gltf
+	header @gltf {
+		Content-Type model/gltf+json
+		defer
+	}
+	@binary path *.bin *.env
+	header @binary {
+		Content-Type application/octet-stream
+		defer
+	}
+
+	# Real 404s for missing files (no SPA fallback that would hide missing assets).
+	file_server
+}
+
+realtime.example.com {
+	request_body {
+		max_size 32KB
+	}
+
+	# Every path (matchmaking, /api, /healthz and the per-room WebSockets) goes to the game
+	# service, which listens on loopback only. Caddy proxies WebSocket upgrades by itself.
+	reverse_proxy 127.0.0.1:2567
+}

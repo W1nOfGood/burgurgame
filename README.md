@@ -27,6 +27,10 @@ scripts/build-client.sh https://realtime.example.com /var/www/after-hours/client
 scripts/smoke.sh https://realtime.example.com https://game.example.com
 ```
 
+**Windows Server VPS?** Follow [docs/DEPLOYMENT_WINDOWS.md](docs/DEPLOYMENT_WINDOWS.md): copy-paste
+PowerShell that installs Node.js, PostgreSQL and Caddy (automatic HTTPS) as Windows services, plus
+`scripts/windows/update.ps1`, `backup.ps1`, `restore.ps1` and `smoke.ps1`.
+
 **Do you need DirectAdmin or a separate static host?** No. The same VPS serves the static
 website (via Nginx) and runs the game service and database in Docker. If your VPS already uses
 DirectAdmin, the guide shows how to use its web server instead. A static-only/shared host can't
@@ -86,15 +90,16 @@ npm run typecheck
 | `packages/protocol` | Replicated state schema, message validators, protocol version |
 | `packages/data` | Layout, items, recipes, prices, tuning |
 | `database/migrations` | PostgreSQL schema |
-| `deploy/` | Dockerfile, Compose, Nginx example, environment template |
+| `deploy/` | Dockerfile, Compose, Nginx example, environment template; `deploy/windows` Caddy and IIS configs |
 | `assets/source` | Blender (bpy) scripts that model, texture, light, bake and export all art; fonts |
-| `scripts/` | Client build, backup, restore, smoke test, asset build, probe conversion |
+| `scripts/` | Client build, backup, restore, smoke test, asset build, probe conversion; `scripts/windows` PowerShell equivalents |
 | `tests/e2e` | Playwright multi-browser tests |
 | `docs/` | Plan, deployment, architecture, controls, recipes, assets, limitations |
 
 ## Documentation
 
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — VPS install, DirectAdmin, updates, backups
+- [docs/DEPLOYMENT_WINDOWS.md](docs/DEPLOYMENT_WINDOWS.md) — Windows Server VPS install (PowerShell, IIS/Plesk)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — authority, networking, persistence, security
 - [docs/CONTROLS.md](docs/CONTROLS.md) — desktop and touch controls
 - [docs/RECIPES.md](docs/RECIPES.md) — the menu
