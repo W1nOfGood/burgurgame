@@ -251,11 +251,13 @@ def dress_for_hero() -> None:
         o.hide_render = True
 
 
-def preview(scene: Scene, tag: str, hero: bool = False) -> None:
+def preview(scene: Scene, tag: str, hero: bool = False, only: set[str] | None = None) -> None:
     os.makedirs(PREVIEW, exist_ok=True)
     if hero:
         dress_for_hero()
         for name, (eye, target, lens) in HERO_SHOTS.items():
+            if only and name not in only:
+                continue
             bl.camera(f"cam_{name}", eye, target, lens=lens)
             t = time.time()
             bl.render(os.path.join(PREVIEW, f"{name}.jpg"), width=1600, height=900, samples=128, exposure=args_exposure)
@@ -405,6 +407,7 @@ def main() -> None:
     ap.add_argument("--tag", default="p")
     ap.add_argument("--fast", action="store_true", help="low samples / half-res lightmaps for iteration")
     ap.add_argument("--hero", action="store_true", help="presentation renders (Cycles, path traced)")
+    ap.add_argument("--shots", default="", help="with --hero: comma-separated shot names (default: all)")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
     bl.reset()
     s = Scene()
@@ -416,7 +419,7 @@ def main() -> None:
     exterior.build(s)
     s.lights()
     if args.preview or args.hero:
-        preview(s, args.tag, hero=args.hero)
+        preview(s, args.tag, hero=args.hero, only={n for n in args.shots.split(",") if n} or None)
         return
     fast = args.fast
     bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0)

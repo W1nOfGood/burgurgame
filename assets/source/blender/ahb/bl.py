@@ -418,10 +418,15 @@ def subsurf(obj: bpy.types.Object, levels: int = 2) -> bpy.types.Object:
 
 
 def transform_apply(obj: bpy.types.Object) -> None:
-    """Bakes the object transform into its mesh."""
-    me = obj.data
-    me.transform(obj.matrix_world)
-    obj.matrix_world = Matrix.Identity(4)
+    """Bakes the object transform into its mesh.
+
+    Built from location/rotation/scale rather than ``matrix_world``: Blender refreshes
+    ``matrix_world`` only on a depsgraph update, so right after a script sets ``location`` it is
+    stale and the transform would be silently dropped.
+    """
+    to_parent = obj.parent.matrix_world @ obj.matrix_parent_inverse if obj.parent is not None else Matrix.Identity(4)
+    obj.data.transform(to_parent @ obj.matrix_basis)
+    obj.matrix_basis = to_parent.inverted()
 
 
 def join(objs: Sequence[bpy.types.Object], name: str) -> bpy.types.Object:
