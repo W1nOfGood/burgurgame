@@ -42,7 +42,11 @@ Honest status against the specification. Nothing below is claimed as done.
 - **Art on real GPUs** has only been reviewed in software-rendered (SwiftShader) captures and
   Cycles previews; colour, exposure and texture density need a pass on calibrated displays and
   on an iPad.
-- **Stage 4:** customers (NPCs, queueing), fries, drinks, cleaning/spills, stock purchasing UI,
+- **Customers** walk in, order at the counter and collect their food, but they do not queue
+  behind each other (each takes a free counter spot; with every spot taken, nobody new comes
+  in until one frees), do not sit down to eat, do not react to a refused burger beyond the
+  toast, and walk through other people rather than around them.
+- **Stage 4:** fries, drinks, cleaning/spills, stock purchasing UI,
   upgrades, decoration, the in-world office catalog/ledger (the ledger appears as an overlay at
   shift end; purchases exist in the store API only).
 - **Persistence gaps:** restored kitchens get a new room code (the old code is not reserved);

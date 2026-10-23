@@ -334,10 +334,10 @@ PROBES = {
 }
 
 
-def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: int, size_scale: float, reuse: bool = False) -> None:
+def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: int, size_scale: float, reuse: bool = False, rebake: frozenset = frozenset()) -> None:
     """Bakes lightmaps, AO and probes, then exports. With ``reuse`` the existing lightmaps,
     AO maps and probes are kept (only valid while the lightmapped geometry is unchanged: the
-    lightmap UVs are recomputed identically from it)."""
+    lightmap UVs are recomputed identically from it); groups in ``rebake`` are baked anyway."""
     import numpy as np
 
     os.makedirs(OUT, exist_ok=True)
@@ -361,7 +361,7 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
         t = time.time()
         bl.lightmap_uv([obj], margin=3.0 / size)
         print(f"[lightmap] {g}: uv {time.time() - t:.1f}s, {len(obj.data.polygons)} faces")
-        if previous is not None:
+        if previous is not None and g not in rebake:
             manifest["lightmaps"][g] = previous["lightmaps"][g]
             continue
         t = time.time()
@@ -446,6 +446,7 @@ def main() -> None:
     ap.add_argument("--tag", default="p")
     ap.add_argument("--fast", action="store_true", help="low samples / half-res lightmaps for iteration")
     ap.add_argument("--reuse-lightmaps", action="store_true", help="re-export keeping the current lightmaps and probes (lightmapped geometry unchanged)")
+    ap.add_argument("--rebake", default="", help="with --reuse-lightmaps: comma-separated lightmap groups to bake anyway")
     ap.add_argument("--hero", action="store_true", help="presentation renders (Cycles, path traced)")
     ap.add_argument("--shots", default="", help="with --hero: comma-separated shot names (default: all)")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
@@ -462,7 +463,7 @@ def main() -> None:
         preview(s, args.tag, hero=args.hero, only={n for n in args.shots.split(",") if n} or None)
         return
     fast = args.fast
-    bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0, reuse=args.reuse_lightmaps)
+    bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0, reuse=args.reuse_lightmaps, rebake=frozenset(g for g in args.rebake.split(",") if g))
 
 
 if __name__ == "__main__":

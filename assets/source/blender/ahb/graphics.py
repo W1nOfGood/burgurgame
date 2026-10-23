@@ -7,6 +7,7 @@ are fictional and belong to this project.
 from __future__ import annotations
 
 import math
+import zlib
 import os
 
 import numpy as np
@@ -200,7 +201,7 @@ def monitor_screen() -> str:
 def box_label(text: str, sub: str, color: tuple[int, int, int], name: str) -> str:
     """Printed corrugated-box side: ink on kraft."""
     W, H = 512, 384
-    im = _paper(W, H, (176, 132, 86), hash(name) % 1000, grain=9)
+    im = _paper(W, H, (176, 132, 86), zlib.crc32(name.encode()) % 1000, grain=9)  # stable seed (str hash is salted)
     d = ImageDraw.Draw(im)
     d.rectangle([24, 24, W - 24, H - 24], outline=color, width=8)
     _center(d, text, 110, _font(BLACK, 92 if len(text) < 8 else 64), color, W)

@@ -67,14 +67,26 @@ item) plus layers positioned by accumulated layer heights. Loose roots are Rapie
 (they fall, land on the floor and get marked dirty); held items have no body and follow the
 holder's hand target, clamped against walls. Grill contact is derived from geometry each tick.
 
-## Orders and payment
+## Customers, orders and payment
 
-Tickets are created on the server at a pace scaled by connected players; recipes unlock in tiers
-during a shift. A tray placed on the pickup shelf with a closed burger is evaluated against all
-open tickets (best score wins), locked, and a sale is committed in one transaction — sale row
-(unique per restaurant + order key), balance update, ledger event. The room acknowledges and
-removes the food only after commit; a duplicate commit returns the original sale. On failure the
-tray is unlocked and nothing is handed over.
+Every ticket belongs to a walk-in customer. At a pace scaled by connected players the server
+sends a customer in from the street; they come through the front door and down a lane between
+the dining tables to a free spot at the counter, and the ticket prints when they arrive (with
+their name; recipes unlock in tiers during a shift). The walk is not streamed: `CustomerState`
+replicates only the phase (`arriving`, `waiting`, `collecting`, `leaving`), the tick it started,
+the counter spot and a look/name seed, and both sides rebuild the same rounded route from
+`packages/data/src/customers.ts` and evaluate it at the current tick
+(`packages/simulation/src/customers.ts`). Timelines are shifted on resume, so a pause freezes
+them; closing waits for customers still walking in; a restored kitchen puts waiting customers
+back at the counter.
+
+A tray placed on the pickup shelf with a closed burger is evaluated against all open tickets
+(best score wins), locked, and a sale is committed in one transaction — sale row (unique per
+restaurant + order key), balance update, ledger event; a duplicate commit returns the original
+sale, and on failure the tray is unlocked and nothing is handed over. After the commit the
+customer steps to the shelf and takes the food: the stack stays on the locked tray until that
+moment, then they leave carrying a takeaway bag. In a normal shift a customer who waits too long
+leaves without their order.
 
 ## Persistence and lifecycle
 
@@ -117,8 +129,10 @@ tray is unlocked and nothing is handed over.
 - **Food:** item visuals are clones of authored meshes with per-item materials; a shader
   plugin blends raw → cooked textures from the replicated cooking bytes (per-side browning,
   burn, dirt), so every client shows the same state without extra messages.
-- **Characters:** skinned first-person hands and crew members are posed procedurally from
-  replicated input (grip, movement, look pitch, crouch, holding).
+- **Characters:** skinned first-person hands, teammates and customers share one bone layout and
+  are posed procedurally — hands from the grip, teammates from replicated input (movement, look
+  pitch, crouch, holding), customers from their route pose (stride tied to distance walked, so
+  feet don't slide; reach and carry at the shelf). The front door swings open as people pass.
 - **Fallbacks:** each authored layer loads asynchronously; if it fails, the procedural stand-in
   stays (the game remains playable with no art files at all).
 - **Presets:** tablet and low skip bloom, glow and SSAO and use smaller shadow maps; high adds
