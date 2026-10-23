@@ -104,10 +104,35 @@ export const OrderState = schema(
     /** "open" | "served" | "refused" | "cancelled" */
     status: t.string().default(""),
     score: t.uint8().default(0),
+    /** Name of the customer who ordered ("" for tickets without a walk-in customer). */
+    customer: t.string().default(""),
   },
   "OrderState",
 );
 export type OrderState = SchemaType<typeof OrderState>;
+
+/**
+ * A walk-in customer. Only phase changes are replicated: both sides rebuild the walk from
+ * data/customers.ts and evaluate it at the current tick (simulation/customers.ts).
+ */
+export const CustomerState = schema(
+  {
+    /** Look and name seed. */
+    seed: t.uint16().default(0),
+    /** Index into COUNTER_SPOTS. */
+    spot: t.uint8().default(0),
+    /** "arriving" | "waiting" | "collecting" | "leaving" */
+    phase: t.string().default(""),
+    /** Server tick at which the phase started. */
+    phaseAt: t.uint32().default(0),
+    /** Key of their order in RestaurantState.orders once they have ordered. */
+    order: t.string().default(""),
+    /** Left without their food. */
+    angry: t.boolean().default(false),
+  },
+  "CustomerState",
+);
+export type CustomerState = SchemaType<typeof CustomerState>;
 
 export const RestaurantState = schema(
   {
@@ -142,6 +167,7 @@ export const RestaurantState = schema(
     stock: t.map("uint16"),
     /** Session ids voting for a co-op pause. */
     pauseVotes: t.array("string"),
+    customers: t.map(CustomerState),
   },
   "RestaurantState",
 );

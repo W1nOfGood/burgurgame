@@ -3,6 +3,7 @@ import {
   BOXES,
   CHILLER_DRAWER,
   COOKING,
+  COUNTER_SPOTS,
   GRILL_ZONES,
   INITIAL_ITEMS,
   INTERACTION,
@@ -18,6 +19,7 @@ import {
   SPAWN_POINTS,
   SPAWN_YAW,
   STOCK_KEYS,
+  customerName,
   isPatty,
   modifiersFor,
   stockKeyFor,
@@ -31,6 +33,7 @@ import {
   ITEM_GROUPS,
   PlayerMotor,
   canAddToStack,
+  collectTicks,
   createFoodState,
   createRng,
   dispenserById,
@@ -44,12 +47,14 @@ import {
   inTrashZone,
   isNoPlaceArea,
   lookDirection,
+  phaseTicks,
   restingHeight,
   stackOffsets,
   stepFood,
   stepGrillTemp,
   surfaceAt,
   withinReach,
+  type CustomerPhase,
   type Evaluation,
   type FoodState,
   type MoveSample,
@@ -58,6 +63,7 @@ import {
   type V3,
 } from "@ahb/simulation";
 import {
+  CustomerState,
   GrillZoneState,
   ItemState,
   OrderState,
@@ -157,6 +163,15 @@ interface OrderRt {
   reservedBy: string | null;
 }
 
+interface CustomerRt {
+  id: string;
+  s: CustomerState;
+  /** Tick at which the current phase ends on its own (Infinity while waiting). */
+  endsAt: number;
+  /** Their tray, emptied when they take the food (tick). */
+  handover: { trayId: string; tick: number } | null;
+}
+
 export interface ItemSnapshot {
   id: string;
   kind: ItemKind;
@@ -185,7 +200,18 @@ export interface KitchenSnapshot {
   knobs: number[];
   grillTemps: number[];
   items: ItemSnapshot[];
-  orders: { id: string; number: number; recipe: RecipeId; modifiers: ModifierId[]; createdAt: number; status: string; score: number }[];
+  orders: {
+    id: string;
+    number: number;
+    recipe: RecipeId;
+    modifiers: ModifierId[];
+    createdAt: number;
+    status: string;
+    score: number;
+    /** The walk-in customer who ordered (absent in older saves). */
+    customer?: string;
+    customerSeed?: number;
+  }[];
 }
 
 const PLAYER_COLORS = 6;
@@ -197,6 +223,9 @@ export class Kitchen {
   private readonly players = new Map<string, PlayerRt>();
   private readonly items = new Map<string, ItemRt>();
   private readonly orders = new Map<string, OrderRt>();
+  private readonly customers = new Map<string, CustomerRt>();
+  private customerSeq = 0;
+  private pausedAtTick = 0;
   private readonly grillTemps: number[] = GRILL_ZONES.map(() => COOKING.ambientTemp);
   private rng: () => number;
   private itemSeq = 0;
@@ -958,6 +987,9 @@ export class Kitchen {
     this.state.served = 0;
     this.refused = 0;
     this.nextOrderAt = 4;
+    for (const c of this.customers.values()) {
+      if (c.s.phase === "waiting" || c.s.phase === "arriving") this.setCustomerPhase(c, "leaving", this.state.tick, true);
+    }
     for (const [id, o] of this.orders) {
       this.orders.delete(id);
       this.state.orders.delete(id);
@@ -999,6 +1031,7 @@ export class Kitchen {
   }
 
   pause(reason: string): void {
+    if (!this.state.paused) this.pausedAtTick = this.state.tick;
     this.state.paused = true;
     this.state.pauseReason = reason;
     this.state.resumeTick = 0;
@@ -1008,6 +1041,14 @@ export class Kitchen {
   }
 
   private resume(): void {
+    // Customers' timelines are in ticks, which keep counting while paused: shift them so
+    // everyone picks up exactly where they stood.
+    const gap = (this.state.tick - this.pausedAtTick) >>> 0;
+    for (const c of this.customers.values()) {
+      c.s.phaseAt = (c.s.phaseAt + gap) >>> 0;
+      c.endsAt += gap;
+      if (c.handover) c.handover.tick += gap;
+    }
     this.state.paused = false;
     this.state.pauseReason = "";
     this.state.resumeTick = 0;
@@ -1087,19 +1128,30 @@ export class Kitchen {
       order.s.score = req.evaluation.score;
       order.reservedBy = null;
     }
-    const tray = this.items.get(req.trayId);
-    if (tray) {
-      // The customer takes the food; the tray returns to the counter empty.
-      if (tray.child) this.destroyStack(this.items.get(tray.child)!, false);
-      tray.locked = false;
-      tray.s.holder = "";
-      tray.pos = { x: tray.pos.x, y: tray.pos.y, z: Math.min(tray.pos.z + 0.12, 0.3) };
-      this.ensureBody(tray);
-      this.bump(tray);
+    const customer = this.customerWithOrder(req.orderId);
+    if (customer && customer.s.phase === "waiting") {
+      // They step up to the shelf and take it: the tray stays locked with the food until then.
+      const now = this.state.tick;
+      this.setCustomerPhase(customer, "collecting", now);
+      customer.handover = { trayId: req.trayId, tick: now + collectTicks(customer.s.spot).handover };
+    } else {
+      this.handOver(req.trayId);
     }
     this.state.revenue += req.evaluation.priceCents + req.evaluation.tipCents;
     this.state.balance = balanceAfterCents;
     this.state.served += 1;
+  }
+
+  /** The customer takes the food; the tray returns to the counter empty. */
+  private handOver(trayId: string): void {
+    const tray = this.items.get(trayId);
+    if (!tray) return;
+    if (tray.child) this.destroyStack(this.items.get(tray.child)!, false);
+    tray.locked = false;
+    tray.s.holder = "";
+    tray.pos = { x: tray.pos.x, y: tray.pos.y, z: Math.min(tray.pos.z + 0.12, 0.3) };
+    this.ensureBody(tray);
+    this.bump(tray);
   }
 
   /** Called when the payment could not be committed; nothing was handed over. */
@@ -1251,6 +1303,7 @@ export class Kitchen {
     }
 
     if (st.phase === "open" || st.phase === "closing") this.stepOrders(dt);
+    this.stepCustomers();
     this.syncAll();
   }
 
@@ -1288,7 +1341,7 @@ export class Kitchen {
       const openCount = [...this.orders.values()].filter((o) => o.s.status === "open").length;
       const maxOpen = SHIFT.maxOpenOrdersBase + players - 1;
       if (st.shiftTime >= this.nextOrderAt) {
-        if (openCount < maxOpen) this.createOrder(this.randomRecipe());
+        if (openCount + this.arrivingCount() < maxOpen) this.spawnCustomer();
         this.nextOrderAt = st.shiftTime + interval * (0.75 + this.rng() * 0.5);
       }
       if (st.mode === "normal" && st.shiftTime >= SHIFT.normalShiftSeconds) {
@@ -1302,11 +1355,14 @@ export class Kitchen {
       for (const o of this.orders.values()) {
         if (o.s.status === "open" && !o.reservedBy && st.shiftTime - o.s.createdAt > SHIFT.patienceSeconds * 2) {
           o.s.status = "cancelled";
-          this.hooks.broadcastToast(`Customer #${o.s.number} got tired of waiting and left`, "warn");
+          const who = o.s.customer ? `${o.s.customer} (#${o.s.number})` : `Customer #${o.s.number}`;
+          this.hooks.broadcastToast(`${who} got tired of waiting and left`, "warn");
+          const c = this.customerWithOrder(o.id);
+          if (c) this.setCustomerPhase(c, "leaving", st.tick, true);
         }
       }
     }
-    if (st.phase === "closing" && ![...this.orders.values()].some((o) => o.s.status === "open")) {
+    if (st.phase === "closing" && this.arrivingCount() === 0 && ![...this.orders.values()].some((o) => o.s.status === "open")) {
       st.phase = "prep";
       st.shiftSwitch = false;
       this.hooks.shiftEnded({ shiftId: this.shiftId, revenue: st.revenue, costs: st.costs, waste: st.waste, served: st.served, refused: this.refused });
@@ -1326,7 +1382,12 @@ export class Kitchen {
     return pool[Math.floor(this.rng() * pool.length)] ?? "classic_cheeseburger";
   }
 
+  /** A ticket with no walk-in customer behind it (tests and tools); shifts use spawnCustomer. */
   createOrder(recipe: RecipeId = "classic_cheeseburger", modifiers?: ModifierId[]): OrderState {
+    return this.addOrder(recipe, modifiers, "").s;
+  }
+
+  private addOrder(recipe: RecipeId, modifiers: ModifierId[] | undefined, customer: string): OrderRt {
     const st = this.state;
     const number = st.nextOrder;
     st.nextOrder = number >= 999 ? 1 : number + 1;
@@ -1335,10 +1396,12 @@ export class Kitchen {
     o.recipe = recipe;
     o.createdAt = st.shiftTime;
     o.status = "open";
+    o.customer = customer;
     const mods = modifiers ?? this.randomModifiers(recipe);
     for (const m of mods) o.modifiers.push(m);
     const id = `o${number}_${Math.floor(st.shiftTime * 10)}`;
-    this.orders.set(id, { id, s: o, reservedBy: null });
+    const rt: OrderRt = { id, s: o, reservedBy: null };
+    this.orders.set(id, rt);
     st.orders.set(id, o);
     // Keep the rail short: drop finished tickets beyond the latest few.
     const finished = [...this.orders.values()].filter((x) => x.s.status !== "open").sort((a, b) => a.s.createdAt - b.s.createdAt);
@@ -1347,7 +1410,70 @@ export class Kitchen {
       this.orders.delete(old.id);
       st.orders.delete(old.id);
     }
-    return o;
+    return rt;
+  }
+
+  // ---------------------------------------------------------------------------------------
+  // Customers
+
+  /** Sends the next customer in from the street; null when every counter spot is taken. */
+  spawnCustomer(seed?: number): CustomerState | null {
+    return this.addCustomer(seed)?.s ?? null;
+  }
+
+  private addCustomer(seed?: number): CustomerRt | null {
+    const taken = new Set([...this.customers.values()].filter((c) => c.s.phase !== "leaving").map((c) => c.s.spot));
+    const spot = COUNTER_SPOTS.findIndex((_p, i) => !taken.has(i));
+    if (spot < 0) return null;
+    const s = new CustomerState();
+    s.seed = seed ?? Math.floor(this.rng() * 65536);
+    s.spot = spot;
+    const id = `c${++this.customerSeq}`;
+    const c: CustomerRt = { id, s, endsAt: 0, handover: null };
+    this.setCustomerPhase(c, "arriving", this.state.tick);
+    this.customers.set(id, c);
+    this.state.customers.set(id, s);
+    return c;
+  }
+
+  private setCustomerPhase(c: CustomerRt, phase: CustomerPhase, at: number, angry = false): void {
+    c.s.phase = phase;
+    c.s.phaseAt = at >>> 0;
+    c.s.angry = angry;
+    c.endsAt = at + phaseTicks({ phase, phaseAt: at, spot: c.s.spot, seed: c.s.seed, angry });
+  }
+
+  private customerWithOrder(orderId: string): CustomerRt | undefined {
+    for (const c of this.customers.values()) if (c.s.order === orderId) return c;
+    return undefined;
+  }
+
+  private arrivingCount(): number {
+    let n = 0;
+    for (const c of this.customers.values()) if (c.s.phase === "arriving") n++;
+    return n;
+  }
+
+  private stepCustomers(): void {
+    const now = this.state.tick;
+    for (const c of [...this.customers.values()]) {
+      if (c.handover && now >= c.handover.tick) {
+        this.handOver(c.handover.trayId);
+        c.handover = null;
+      }
+      if (now < c.endsAt) continue;
+      if (c.s.phase === "arriving") {
+        // At the counter: now they order.
+        const order = this.addOrder(this.randomRecipe(), undefined, customerName(c.s.seed));
+        c.s.order = order.id;
+        this.setCustomerPhase(c, "waiting", c.endsAt);
+      } else if (c.s.phase === "collecting") {
+        this.setCustomerPhase(c, "leaving", c.endsAt);
+      } else if (c.s.phase === "leaving") {
+        this.customers.delete(c.id);
+        this.state.customers.delete(c.id);
+      }
+    }
   }
 
   private randomModifiers(recipe: RecipeId): ModifierId[] {
@@ -1443,6 +1569,8 @@ export class Kitchen {
         createdAt: o.s.createdAt,
         status: o.reservedBy ? "open" : o.s.status,
         score: o.s.score,
+        customer: o.s.customer,
+        customerSeed: this.customerWithOrder(o.id)?.s.seed,
       })),
     };
   }
@@ -1452,6 +1580,10 @@ export class Kitchen {
    * handed-over items removed, so a served burger never reappears beside a credited payment.
    */
   restore(snap: KitchenSnapshot, committed: { orderNumber: number; score: number; servedItemIds: string[] }[]): void {
+    for (const id of [...this.customers.keys()]) {
+      this.customers.delete(id);
+      this.state.customers.delete(id);
+    }
     for (const it of [...this.items.values()]) {
       this.removeBody(it);
       this.items.delete(it.id);
@@ -1523,8 +1655,17 @@ export class Kitchen {
       const paid = committedNumbers.get(o.number);
       os.status = paid ? "served" : o.status;
       os.score = paid ? paid.score : o.score;
+      os.customer = o.customer ?? "";
       this.orders.set(o.id, { id: o.id, s: os, reservedBy: null });
       st.orders.set(o.id, os);
+      // Customers still waiting for an open ticket are back at the counter.
+      if (os.status === "open" && o.customerSeed !== undefined) {
+        const c = this.addCustomer(o.customerSeed);
+        if (c) {
+          c.s.order = o.id;
+          this.setCustomerPhase(c, "waiting", st.tick);
+        }
+      }
     }
     this.syncAll();
   }
@@ -1557,6 +1698,7 @@ export class Kitchen {
     for (const it of this.items.values()) this.removeBody(it);
     this.players.clear();
     this.items.clear();
+    this.customers.clear();
   }
 }
 

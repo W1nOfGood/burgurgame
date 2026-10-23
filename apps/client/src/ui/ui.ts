@@ -429,7 +429,7 @@ export class Ui {
     }
   }
 
-  setTickets(visible: boolean, orders: { number: number; label: string; mods: string[]; wait: number; hint?: string }[]): void {
+  setTickets(visible: boolean, orders: { number: number; customer?: string; label: string; mods: string[]; wait: number; hint?: string }[]): void {
     this.tickets.hidden = !visible || orders.length === 0;
     const key = orders.map((o) => `${o.number}:${Math.floor(o.wait / 5)}:${o.hint ?? ""}`).join("|");
     if (key === this.lastTicketsKey) return;
@@ -437,7 +437,7 @@ export class Ui {
     this.tickets.innerHTML = orders
       .map(
         (o) =>
-          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
+          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}${o.customer ? ` <span class="who">${esc(o.customer)}</span>` : ""}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
       )
       .join("");
   }

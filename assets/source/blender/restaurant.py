@@ -52,6 +52,9 @@ class Scene:
         self.groups: dict[str, list[bpy.types.Object]] = {"kitchen": [], "dining": [], "exterior": []}
         self.unbaked: list[bpy.types.Object] = []  # exported, not lightmapped (glass, emitters)
         self.bake_only: list[bpy.types.Object] = []  # occluders for the bake, exported elsewhere
+        # Parts that move in the game (the front door's leaves): in the bake as occluders, then
+        # exported as their own nodes, pivoted on their hinges, never lightmapped.
+        self.movable: dict[str, tuple[tuple[float, float, float], list[bpy.types.Object]]] = {}
         self.m = {}
         self.layout = LAYOUT
         self.gfx = {}
@@ -70,6 +73,9 @@ class Scene:
             elif group == "bake_only":
                 self.bake_only.append(o)
             o["group"] = group
+
+    def add_movable(self, name: str, pivot: tuple[float, float, float], *objs: bpy.types.Object) -> None:
+        self.movable.setdefault(name, (pivot, []))[1].extend(o for o in objs if o is not None)
 
     # --------------------------------------------------------------------------------------
     def materials(self) -> None:
@@ -156,17 +162,21 @@ class Scene:
         for (a0, a1) in ((X0, -1.0), (1.0, X1)):
             parts.append(aabb(f"transom_b_{a0}", a0, 0.9, z - 0.05, a1, 0.94, z + 0.05, m["black_metal"], cull_bottom=False))
             parts.append(aabb(f"transom_t_{a0}", a0, 2.36, z - 0.05, a1, 2.4, z + 0.05, m["black_metal"], cull_bottom=False))
-        # Door frame and two leaves with brushed push bars.
+        # Door frame and two leaves with brushed push bars. The leaves open (customers come and
+        # go): each is its own node, hinged at its outer edge.
         parts += kit.frame("door_frame", -1.0, 0.0, 1.0, 2.5, z, 0.1, 0.05, m["black_metal"])
         for i, (a0, a1) in enumerate(((-0.95, 0.0), (0.0, 0.95))):
-            parts += kit.frame(f"leaf_{i}", a0, 0.012, a1, 2.45, z, 0.045, 0.06, m["black_metal"])
-            parts.append(aabb(f"leaf_kick_{i}", a0 + 0.06, 0.012, z - 0.02, a1 - 0.06, 0.2, z + 0.02, m["black_metal"], cull_bottom=False))
+            leaf = kit.frame(f"leaf_{i}", a0, 0.012, a1, 2.45, z, 0.045, 0.06, m["black_metal"])
+            leaf.append(aabb(f"leaf_kick_{i}", a0 + 0.06, 0.012, z - 0.02, a1 - 0.06, 0.2, z + 0.02, m["black_metal"], cull_bottom=False))
             for zz, sign in ((z + 0.09, 1), (z - 0.09, -1)):
-                parts.append(bl.tube(f"pushbar_{i}_{sign}", [(a0 + 0.12, 1.05, z + 0.02 * sign), (a0 + 0.12, 1.05, zz), (a1 - 0.12, 1.05, zz), (a1 - 0.12, 1.05, z + 0.02 * sign)], 0.016, m["chrome"]))
+                leaf.append(bl.tube(f"pushbar_{i}_{sign}", [(a0 + 0.12, 1.05, z + 0.02 * sign), (a0 + 0.12, 1.05, zz), (a1 - 0.12, 1.05, zz), (a1 - 0.12, 1.05, z + 0.02 * sign)], 0.016, m["chrome"]))
+            g0, g1 = (-0.89, -0.06) if i == 0 else (0.06, 0.89)
+            leaf.append(wall_rect(f"glass_d{i}", "z", z, g0, g1, 0.2, 2.39, 1, m["glass"], uv=1.0))
+            self.add_movable(f"door_leaf_{i}", (a0 if i == 0 else a1, 0.0, z), *leaf)
         for p in parts:
             self.add("dining", p)
         # Glazing panes (two layers would be a box; one double-sided pane is enough here).
-        for name, (a0, a1, y0, y1) in {"glass_l": (X0, -1.0, 0.94, 2.36), "glass_r": (1.0, X1, 0.94, 2.36), "glass_d0": (-0.89, -0.06, 0.2, 2.39), "glass_d1": (0.06, 0.89, 0.2, 2.39)}.items():
+        for name, (a0, a1, y0, y1) in {"glass_l": (X0, -1.0, 0.94, 2.36), "glass_r": (1.0, X1, 0.94, 2.36)}.items():
             g = wall_rect(name, "z", z, a0, a1, y0, y1, 1, m["glass"], uv=1.0)
             self.add("unbaked", g)
 
@@ -324,14 +334,19 @@ PROBES = {
 }
 
 
-def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: int, size_scale: float) -> None:
+def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: int, size_scale: float, reuse: bool = False) -> None:
+    """Bakes lightmaps, AO and probes, then exports. With ``reuse`` the existing lightmaps,
+    AO maps and probes are kept (only valid while the lightmapped geometry is unchanged: the
+    lightmap UVs are recomputed identically from it)."""
     import numpy as np
 
     os.makedirs(OUT, exist_ok=True)
     manifest: dict = {"version": 1, "lightmaps": {}, "probes": {}, "generated": time.strftime("%Y-%m-%d")}
+    previous = json.load(open(os.path.join(OUT, "restaurant.json"))) if reuse else None
     classify(s)
     # Glass is invisible to light paths during the bake (thin glazing; lets street light in).
-    glass = [o for o in s.unbaked if any(sl.material and sl.material.name == "glass" for sl in o.material_slots)]
+    movable_parts = [o for _pivot, objs in s.movable.values() for o in objs]
+    glass = [o for o in s.unbaked + movable_parts if any(sl.material and sl.material.name == "glass" for sl in o.material_slots)]
     for o in glass:
         o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_shadow = False
     bpy.context.scene.world.light_settings.distance = 0.6
@@ -346,6 +361,9 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
         t = time.time()
         bl.lightmap_uv([obj], margin=3.0 / size)
         print(f"[lightmap] {g}: uv {time.time() - t:.1f}s, {len(obj.data.polygons)} faces")
+        if previous is not None:
+            manifest["lightmaps"][g] = previous["lightmaps"][g]
+            continue
         t = time.time()
         irr = bl.bake_lightmap([obj], size, samples, name=f"lm_{g}")
         print(f"[lightmap] {g}: irradiance bake {time.time() - t:.1f}s (max {irr.max():.2f}, mean {irr.mean():.3f})")
@@ -365,6 +383,9 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
         o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_shadow = True
     # Reflection probes (box projected in the client).
     for name, p in PROBES.items():
+        if previous is not None:
+            manifest["probes"][name] = previous["probes"][name]
+            continue
         t = time.time()
         faces, mats = bl.render_cube(p["center"], 384, probe_samples)
         eq = bl.cube_to_equirect(faces, mats, 1024)
@@ -388,6 +409,24 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
             unbaked.append(u)
     for o in s.bake_only:
         bpy.data.objects.remove(o)
+    # Moving parts: one node per part with its origin on the pivot, under an "unbaked_door" root
+    # so the client probe-lights them and leaves their transforms live.
+    from mathutils import Matrix, Vector
+
+    door_root = bpy.data.objects.new("unbaked_door", None)
+    bl.link(door_root, None)
+    movable = [door_root]
+    for name, (pivot, objs) in s.movable.items():
+        for o in objs:
+            bl.ensure_uv(o)
+        obj = bl.join(objs, name)
+        at = Vector(bl.G(*pivot))
+        obj.data.transform(Matrix.Translation(obj.location - at))
+        obj.location = at
+        obj.parent = door_root
+        obj["lightmap"] = ""
+        obj["region"] = "dining"
+        movable.append(obj)
     # Glass ships as a plain blended material (the client dresses it); transmission would make
     # Babylon render an extra refraction pass.
     gm = bpy.data.materials.get("glass")
@@ -396,7 +435,7 @@ def bake_and_export(s: Scene, *, samples: int, ao_samples: int, probe_samples: i
         b.inputs["Transmission Weight"].default_value = 0.0
         b.inputs["Alpha"].default_value = 0.12
         gm.surface_render_method = "BLENDED"
-    bl.export_gltf(os.path.join(ART, "restaurant.gltf"), [*joined.values(), *unbaked], image_format="WEBP", quality=86)
+    bl.export_gltf(os.path.join(ART, "restaurant.gltf"), [*joined.values(), *unbaked, *movable], image_format="WEBP", quality=86)
     json.dump(manifest, open(os.path.join(OUT, "restaurant.json"), "w"), indent=1)
     print("[export] done", OUT)
 
@@ -406,6 +445,7 @@ def main() -> None:
     ap.add_argument("--preview", action="store_true")
     ap.add_argument("--tag", default="p")
     ap.add_argument("--fast", action="store_true", help="low samples / half-res lightmaps for iteration")
+    ap.add_argument("--reuse-lightmaps", action="store_true", help="re-export keeping the current lightmaps and probes (lightmapped geometry unchanged)")
     ap.add_argument("--hero", action="store_true", help="presentation renders (Cycles, path traced)")
     ap.add_argument("--shots", default="", help="with --hero: comma-separated shot names (default: all)")
     args = ap.parse_args([a for a in sys.argv[1:] if a != "--"])
@@ -422,7 +462,7 @@ def main() -> None:
         preview(s, args.tag, hero=args.hero, only={n for n in args.shots.split(",") if n} or None)
         return
     fast = args.fast
-    bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0)
+    bake_and_export(s, samples=48 if fast else 384, ao_samples=16 if fast else 64, probe_samples=32 if fast else 192, size_scale=0.5 if fast else 1.0, reuse=args.reuse_lightmaps)
 
 
 if __name__ == "__main__":

@@ -6,6 +6,9 @@ It covers two setups:
 - **A. Plain VPS with Nginx** (recommended if the server has no control panel).
 - **B. VPS that already runs DirectAdmin** (or a similar panel such as cPanel or Plesk).
 
+**Windows Server VPS?** Use [DEPLOYMENT_WINDOWS.md](DEPLOYMENT_WINDOWS.md) instead (PowerShell
+commands; Node.js, PostgreSQL and Caddy run as Windows services).
+
 ## Do I need a static host or DirectAdmin?
 
 **No.** One VPS runs everything:
