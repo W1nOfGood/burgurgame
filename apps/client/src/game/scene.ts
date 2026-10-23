@@ -837,6 +837,32 @@ export class RestaurantView {
     crate.isPickable = false;
   }
 
+  private doorLeaves: TransformNode[] | null = null;
+  private doorLookupAt = 0;
+
+  /**
+   * Swings the storefront's double door (0 shut .. 1 open). The leaves are separate nodes of
+   * the authored restaurant, pivoted on their hinges at x = ±0.95; both open out to the street.
+   */
+  setFrontDoor(open: number): void {
+    if (!this.doorLeaves) {
+      const now = performance.now();
+      if (now < this.doorLookupAt) return;
+      this.doorLookupAt = now + 1000;
+      const leaves = ["door_leaf_0", "door_leaf_1"].map((n) => this.scene.getNodeByName(n));
+      if (!leaves.every((n) => n instanceof TransformNode)) return;
+      this.doorLeaves = leaves as TransformNode[];
+      for (const leaf of this.doorLeaves) {
+        leaf.rotationQuaternion = null;
+        leaf.metadata = { ...(leaf.metadata ?? {}), restYaw: leaf.rotation.y };
+      }
+    }
+    const ease = open * open * (3 - 2 * open);
+    const swing = ease * 1.35;
+    this.doorLeaves[0]!.rotation.y = this.doorLeaves[0]!.metadata.restYaw + swing;
+    this.doorLeaves[1]!.rotation.y = this.doorLeaves[1]!.metadata.restYaw - swing;
+  }
+
   registerCasters(meshes: Mesh[]): void {
     if (!this.shadows) return;
     for (const mesh of meshes) this.shadows.addShadowCaster(mesh, true);
@@ -871,7 +897,7 @@ export class RestaurantView {
     if (key !== this.ticketKey || this.ticketTimer <= 0) {
       this.ticketKey = key;
       this.ticketTimer = 1;
-      this.drawTickets(orders.map((o) => ({ number: o.number, recipe: o.recipe as RecipeId, modifiers: [...o.modifiers] as ModifierId[], wait: state.shiftTime - o.createdAt })));
+      this.drawTickets(orders.map((o) => ({ number: o.number, customer: o.customer, recipe: o.recipe as RecipeId, modifiers: [...o.modifiers] as ModifierId[], wait: state.shiftTime - o.createdAt })));
     }
     const boardKey = `${state.name}|${state.balance}`;
     if (boardKey !== this.boardKey) {
@@ -880,7 +906,7 @@ export class RestaurantView {
     }
   }
 
-  private drawTickets(orders: { number: number; recipe: RecipeId; modifiers: ModifierId[]; wait: number }[]): void {
+  private drawTickets(orders: { number: number; customer: string; recipe: RecipeId; modifiers: ModifierId[]; wait: number }[]): void {
     const ctx = this.ticketTex.getContext() as unknown as CanvasRenderingContext2D;
     const w = 1024;
     const h = 134;
@@ -891,12 +917,17 @@ export class RestaurantView {
       ctx.fillRect(x, 4, 160, h - 8);
       ctx.fillStyle = o.wait > 180 ? "#c0392b" : o.wait > 120 ? "#d68910" : "#2c2621";
       ctx.font = "bold 34px ui-monospace, monospace";
-      ctx.fillText(`#${o.number}`, x + 8, 38);
+      ctx.fillText(`#${o.number}`, x + 8, 36);
+      if (o.customer) {
+        ctx.font = "italic 15px ui-monospace, monospace";
+        ctx.fillStyle = "#6e6259";
+        ctx.fillText(o.customer.slice(0, 16), x + 8, 56);
+      }
       ctx.font = "18px ui-monospace, monospace";
       ctx.fillStyle = "#2c2621";
-      ctx.fillText(RECIPES[o.recipe].label.replace("Cheeseburger", "Cheese").slice(0, 14), x + 8, 64);
+      ctx.fillText(RECIPES[o.recipe].label.replace("Cheeseburger", "Cheese").slice(0, 14), x + 8, 79);
       ctx.fillStyle = "#a93226";
-      o.modifiers.forEach((mod, j) => ctx.fillText(MODIFIERS[mod].label.toUpperCase().slice(0, 14), x + 8, 88 + j * 20));
+      o.modifiers.forEach((mod, j) => ctx.fillText(MODIFIERS[mod].label.toUpperCase().slice(0, 14), x + 8, 101 + j * 20));
       ctx.fillStyle = "#6e6259";
       ctx.font = "16px ui-monospace, monospace";
       ctx.fillText(`${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}`, x + 106, 38);

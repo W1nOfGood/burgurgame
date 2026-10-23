@@ -18,6 +18,7 @@ import { DefaultRenderingPipeline } from "@babylonjs/core/PostProcesses/RenderPi
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import {
   DISPENSERS,
+  FRONT_DOOR,
   GRILL_ZONES,
   INTERACTION,
   ITEMS,
@@ -36,6 +37,7 @@ import {
   BUTTON_SPRINT,
   FixedStepper,
   canAddToStack,
+  customerPose,
   inTrashZone,
   isNoPlaceArea,
   lookDirection,
@@ -43,6 +45,7 @@ import {
   sizzleLevel,
   stackOffsets,
   surfaceAt,
+  type CustomerPhase,
   type Rapier,
 } from "@ahb/simulation";
 import { MSG, PING_TEXT, readFoodBytes, type ItemState, type PingPreset, type ResultMessage } from "@ahb/protocol";
@@ -57,6 +60,7 @@ import { ItemView, describeFood, setFoodLibrary } from "./items.js";
 import { FoodLibrary } from "./food.js";
 import { GrillSmoke, type SmokeSource } from "./smoke.js";
 import { AvatarView, loadCrew } from "./players.js";
+import { CustomerView, loadCustomers } from "./customers.js";
 import { LocalPlayer } from "./prediction.js";
 import { RestaurantView, getPick, type PickInfo } from "./scene.js";
 import { TouchControls } from "./touchControls.js";
@@ -128,6 +132,10 @@ export class Game {
   private readonly itemBuffers = new Map<string, SnapshotBuffer>();
   private readonly avatars = new Map<string, AvatarView>();
   private readonly avatarBuffers = new Map<string, SnapshotBuffer>();
+  private readonly customers = new Map<string, CustomerView>();
+  /** Render tick at which customers froze for a pause (the server shifts their clocks on resume). */
+  private customerFreeze: number | null = null;
+  private doorOpen = 0;
   private readonly local: LocalPlayer;
   readonly input: InputManager;
   private readonly touch: TouchControls | null;
@@ -211,7 +219,13 @@ export class Game {
         for (const av of this.avatars.values()) if (av.upgrade()) this.restaurant.registerCasters(av.castMeshes);
       })
       .catch((err) => console.warn("Rigged crew unavailable; keeping stand-in avatars", err));
-    this.ready = Promise.allSettled([envReady, foodReady, crewReady]).then(() => undefined);
+    const customersReady = loadCustomers(scene)
+      .then(() => {
+        if (this.disposed) return;
+        for (const c of this.customers.values()) if (c.upgrade()) this.restaurant.registerCasters(c.castMeshes as Mesh[]);
+      })
+      .catch((err) => console.warn("Customer models unavailable; keeping stand-ins", err));
+    this.ready = Promise.allSettled([envReady, foodReady, crewReady, customersReady]).then(() => undefined);
 
     const me = session.state.players.get(session.sessionId);
     this.local = new LocalPlayer(R, { x: me?.x ?? 0, y: me?.y ?? 0, z: me?.z ?? 3 });
@@ -464,6 +478,19 @@ export class Game {
       }
     }
 
+    for (const [id, c] of state.customers) {
+      if (this.customers.has(id)) continue;
+      const view = new CustomerView(this.scene, this.restaurant.materials, id, c.seed);
+      this.customers.set(id, view);
+      this.restaurant.registerCasters(view.castMeshes as Mesh[]);
+    }
+    for (const id of [...this.customers.keys()]) {
+      if (!state.customers.has(id)) {
+        this.customers.get(id)!.dispose();
+        this.customers.delete(id);
+      }
+    }
+
     const open = [...state.orders.values()].filter((o) => o.status === "open").length;
     if (open > this.orderCount) this.sfx("ticket");
     this.orderCount = open;
@@ -572,6 +599,24 @@ export class Game {
       const label = `${p.name}${p.platform === "touch" ? " · tablet" : ""}${p.away ? " · away" : ""}${p.admin ? " ★" : ""}`;
       av.update(TMP_POSE.x, TMP_POSE.y, TMP_POSE.z, p.yaw, p.pitch, p.crouch, p.held !== "", label, !p.connected);
     }
+
+    // Customers: poses come from their replicated phase and the render clock.
+    if (state.paused) this.customerFreeze ??= renderTick;
+    else this.customerFreeze = null;
+    const custTick = this.customerFreeze ?? renderTick;
+    let nearDoor = Infinity;
+    for (const [id, view] of this.customers) {
+      const c = state.customers.get(id);
+      if (!c) continue;
+      const pose = customerPose({ phase: c.phase as CustomerPhase, phaseAt: c.phaseAt, spot: c.spot, seed: c.seed, angry: c.angry }, custTick);
+      const order = c.order ? state.orders.get(c.order) : undefined;
+      const showTicket = order && (c.phase === "waiting" || c.phase === "collecting") ? order.number : null;
+      view.update(pose, showTicket, dt);
+      nearDoor = Math.min(nearDoor, Math.hypot(pose.x, pose.z - FRONT_DOOR.z));
+    }
+    const doorTarget = nearDoor < FRONT_DOOR.openDistance ? 1 : 0;
+    this.doorOpen += (doorTarget - this.doorOpen) * Math.min(1, dt * (doorTarget ? 4 : 1.6));
+    this.restaurant.setFrontDoor(this.doorOpen);
 
     // Items: roots first, then stacked layers relative to their root.
     const eye = new Vector3(m.x + this.local.offset.x, m.y + eyeH, m.z + this.local.offset.z);
@@ -703,6 +748,7 @@ export class Game {
       .sort((a, b) => a.number - b.number)
       .map((o) => ({
         number: o.number,
+        customer: o.customer,
         label: RECIPES[o.recipe as RecipeId]?.label ?? o.recipe,
         mods: [...o.modifiers].map((mm) => MODIFIERS[mm as ModifierId]?.label ?? mm),
         wait: state.shiftTime - o.createdAt,

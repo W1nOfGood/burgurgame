@@ -7,3 +7,4 @@ export * from "./physics.js";
 export * from "./movement.js";
 export * from "./fixedStep.js";
 export * from "./rng.js";
+export * from "./customers.js";

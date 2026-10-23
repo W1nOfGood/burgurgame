@@ -185,6 +185,8 @@ export async function loadBakedEnvironment(scene: Scene, preset: GraphicsPreset)
       mesh.receiveShadows = preset !== "low";
       staticMeshes.push(mesh);
     }
+    // The door leaves swing (RestaurantView.setFrontDoor); everything else is static.
+    if (group === "unbaked_door") continue;
     mesh.freezeWorldMatrix();
     mesh.doNotSyncBoundingInfo = true;
   }

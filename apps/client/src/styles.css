@@ -469,6 +469,11 @@ kbd {
   text-transform: uppercase;
 }
 
+.ticket .who {
+  font-weight: normal;
+  color: #6e6259;
+}
+
 .ticket small {
   justify-self: end;
   color: #6e6259;
