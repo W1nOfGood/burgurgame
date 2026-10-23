@@ -16,6 +16,11 @@ interface Gltf {
   images?: { uri?: string }[];
   buffers: { uri?: string }[];
   skins?: { joints: number[] }[];
+  materials?: {
+    name: string;
+    normalTexture?: { index: number };
+    pbrMetallicRoughness?: { baseColorTexture?: { index: number }; metallicRoughnessTexture?: { index: number } };
+  }[];
 }
 
 function gltf(rel: string): Gltf {
@@ -75,6 +80,14 @@ describe("authored art", () => {
     for (const side of ["R", "L"]) expect(hn.has(`hand_${side}`)).toBe(true);
     for (const b of ["forearm", "hand", "thumb_03", "index_03", "middle_03", "ring_03", "pinky_03"]) expect(hn.has(b), b).toBe(true);
     expect(hands.skins?.length).toBe(2);
+    // Bare skin: colour, relief and roughness maps on one shared material, plus the thickness
+    // map the client's translucency reads.
+    const skin = hands.materials?.find((m) => m.name === "skin_hand");
+    expect(skin, "skin_hand material").toBeDefined();
+    expect(skin?.pbrMetallicRoughness?.baseColorTexture).toBeDefined();
+    expect(skin?.pbrMetallicRoughness?.metallicRoughnessTexture).toBeDefined();
+    expect(skin?.normalTexture).toBeDefined();
+    expect(existsSync(join(ART, "textures", "skin_hand_thickness.webp"))).toBe(true);
     const crew = gltf("crew.gltf");
     const cn = names(crew);
     for (const b of ["hips", "spine", "chest", "neck", "head", "thigh_l", "shin_r", "upperarm_l", "forearm_r", "crew_cap"]) expect(cn.has(b), b).toBe(true);

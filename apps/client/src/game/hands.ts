@@ -69,12 +69,12 @@ function dressSkin(mat: PBRMaterial, scene: Scene, scattering: boolean): void {
   const ss = mat.subSurface;
   ss.indexOfRefraction = 1.4;
   ss.isTranslucencyEnabled = true;
-  ss.translucencyIntensity = 0.8;
+  ss.translucencyIntensity = 0.4;
   ss.thicknessTexture = new Texture(`${ART_BASE}textures/skin_hand_thickness.webp`, scene);
   ss.minimumThickness = 0;
   ss.maximumThickness = 0.03;
   ss.tintColor = new Color3(0.92, 0.3, 0.18);
-  ss.tintColorAtDistance = 0.005;
+  ss.tintColorAtDistance = 0.008;
   if (scattering && scene.enableSubSurfaceForPrePass()) {
     ss.isScatteringEnabled = true;
     ss.scatteringDiffusionProfile = new Color3(0.85, 0.38, 0.25);

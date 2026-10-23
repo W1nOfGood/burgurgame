@@ -21,12 +21,16 @@ import { BoneDriver, findNode, loadContainer, mountGltfNode } from "./rig.js";
 
 const containers = new Map<string, AssetContainer>();
 
+/** Loads every look it can; a look whose file fails keeps its stand-in. */
 export async function loadCustomers(scene: Scene): Promise<void> {
-  await Promise.all(
+  const results = await Promise.allSettled(
     CUSTOMER_LOOKS.map(async (look) => {
       containers.set(look.id, await loadContainer(scene, `customer_${look.id}.gltf`));
     }),
   );
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed === results.length) throw (results[0] as PromiseRejectedResult).reason;
+  if (failed) console.warn(`${failed} customer look(s) unavailable; those keep stand-ins`);
 }
 
 /** One full stride (two steps) in metres: the gait is tied to distance, so feet don't slide. */
