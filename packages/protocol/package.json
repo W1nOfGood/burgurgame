@@ -1,0 +1,22 @@
+{
+  "name": "@ahb/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@ahb/data": "0.1.0",
+    "@colyseus/schema": "5.0.42",
+    "zod": "4.6.7",
+    "@ahb/simulation": "0.1.0"
+  }
+}

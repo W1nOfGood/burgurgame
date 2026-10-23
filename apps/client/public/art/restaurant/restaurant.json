@@ -1,0 +1,64 @@
+{
+ "version": 1,
+ "lightmaps": {
+  "kitchen": {
+   "lightmap": "lm_kitchen.webp",
+   "ao": "ao_kitchen.webp",
+   "scale": 2.9285,
+   "size": 2048
+  },
+  "dining": {
+   "lightmap": "lm_dining.webp",
+   "ao": "ao_dining.webp",
+   "scale": 3.3755,
+   "size": 2048
+  },
+  "exterior": {
+   "lightmap": "lm_exterior.webp",
+   "ao": "ao_exterior.webp",
+   "scale": 2.5231,
+   "size": 1024
+  }
+ },
+ "probes": {
+  "kitchen": {
+   "hdr": "probe_kitchen.hdr",
+   "env": "probe_kitchen.env",
+   "center": [
+    0.0,
+    1.6,
+    2.5
+   ],
+   "min": [
+    -6.0,
+    0.0,
+    0.0
+   ],
+   "max": [
+    6.0,
+    3.2,
+    5.0
+   ]
+  },
+  "dining": {
+   "hdr": "probe_dining.hdr",
+   "env": "probe_dining.env",
+   "center": [
+    0.0,
+    1.6,
+    -3.0
+   ],
+   "min": [
+    -6.0,
+    0.0,
+    -6.0
+   ],
+   "max": [
+    6.0,
+    3.2,
+    0.0
+   ]
+  }
+ },
+ "generated": "2026-10-23"
+}

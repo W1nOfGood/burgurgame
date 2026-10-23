@@ -1,0 +1,1474 @@
+{
+ "BOXES": [
+  {
+   "id": "floor",
+   "center": [
+    0,
+    -0.1,
+    -0.5
+   ],
+   "half": [
+    6.2,
+    0.1,
+    5.7
+   ],
+   "material": "floor_tile",
+   "collide": true,
+   "surface": "floor"
+  },
+  {
+   "id": "ceiling",
+   "center": [
+    0,
+    3.25,
+    -0.5
+   ],
+   "half": [
+    6.2,
+    0.05,
+    5.7
+   ],
+   "material": "ceiling",
+   "collide": false
+  },
+  {
+   "id": "wall_north",
+   "center": [
+    0,
+    1.6,
+    5.1
+   ],
+   "half": [
+    6.2,
+    1.6,
+    0.1
+   ],
+   "material": "wall_tile",
+   "collide": true
+  },
+  {
+   "id": "wall_west",
+   "center": [
+    -6.1,
+    1.6,
+    -0.5
+   ],
+   "half": [
+    0.1,
+    1.6,
+    5.7
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "wall_east",
+   "center": [
+    6.1,
+    1.6,
+    -0.5
+   ],
+   "half": [
+    0.1,
+    1.6,
+    5.7
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "wall_south_left_low",
+   "center": [
+    -3.6,
+    0.45,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.45,
+    0.1
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "window_left",
+   "center": [
+    -3.6,
+    1.65,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.75,
+    0.03
+   ],
+   "material": "glass",
+   "collide": true
+  },
+  {
+   "id": "wall_south_left_high",
+   "center": [
+    -3.6,
+    2.8,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.4,
+    0.1
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "wall_south_right_low",
+   "center": [
+    3.6,
+    0.45,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.45,
+    0.1
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "window_right",
+   "center": [
+    3.6,
+    1.65,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.75,
+    0.03
+   ],
+   "material": "glass",
+   "collide": true
+  },
+  {
+   "id": "wall_south_right_high",
+   "center": [
+    3.6,
+    2.8,
+    -6.1
+   ],
+   "half": [
+    2.6,
+    0.4,
+    0.1
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "door_header",
+   "center": [
+    0,
+    2.85,
+    -6.1
+   ],
+   "half": [
+    1,
+    0.35,
+    0.1
+   ],
+   "material": "wall_plaster",
+   "collide": true
+  },
+  {
+   "id": "front_door",
+   "center": [
+    0,
+    1.25,
+    -6.1
+   ],
+   "half": [
+    1,
+    1.25,
+    0.04
+   ],
+   "material": "glass",
+   "collide": true
+  },
+  {
+   "id": "counter_front_a",
+   "center": [
+    -1.6,
+    0.5,
+    0
+   ],
+   "half": [
+    4.4,
+    0.5,
+    0.35
+   ],
+   "material": "laminate",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "counter_front_b",
+   "center": [
+    5,
+    0.5,
+    0
+   ],
+   "half": [
+    1,
+    0.5,
+    0.35
+   ],
+   "material": "laminate",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "register",
+   "center": [
+    -3.5,
+    1.12,
+    0
+   ],
+   "half": [
+    0.2,
+    0.12,
+    0.18
+   ],
+   "material": "dark_metal",
+   "collide": true
+  },
+  {
+   "id": "heat_lamp",
+   "center": [
+    -0.4,
+    1.68,
+    0
+   ],
+   "half": [
+    1.05,
+    0.04,
+    0.2
+   ],
+   "material": "stainless",
+   "collide": false
+  },
+  {
+   "id": "ticket_rail",
+   "center": [
+    -0.4,
+    1.78,
+    0.32
+   ],
+   "half": [
+    1.05,
+    0.015,
+    0.02
+   ],
+   "material": "stainless",
+   "collide": false
+  },
+  {
+   "id": "grill",
+   "center": [
+    0,
+    0.45,
+    4.55
+   ],
+   "half": [
+    0.85,
+    0.45,
+    0.4
+   ],
+   "material": "grill_plate",
+   "collide": true,
+   "surface": "grill"
+  },
+  {
+   "id": "grill_hood",
+   "center": [
+    0,
+    2.45,
+    4.6
+   ],
+   "half": [
+    1.05,
+    0.3,
+    0.45
+   ],
+   "material": "stainless",
+   "collide": false
+  },
+  {
+   "id": "prep_counter",
+   "center": [
+    -2.6,
+    0.46,
+    4.6
+   ],
+   "half": [
+    1.5,
+    0.46,
+    0.35
+   ],
+   "material": "stainless",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "fryer",
+   "center": [
+    1.5,
+    0.45,
+    4.6
+   ],
+   "half": [
+    0.4,
+    0.45,
+    0.35
+   ],
+   "material": "stainless",
+   "collide": true
+  },
+  {
+   "id": "walk_in",
+   "center": [
+    -5.4,
+    1,
+    4.5
+   ],
+   "half": [
+    0.55,
+    1,
+    0.45
+   ],
+   "material": "fridge_white",
+   "collide": true
+  },
+  {
+   "id": "dry_storage",
+   "center": [
+    3.6,
+    0.9,
+    4.75
+   ],
+   "half": [
+    0.9,
+    0.9,
+    0.2
+   ],
+   "material": "dark_metal",
+   "collide": true
+  },
+  {
+   "id": "office_desk",
+   "center": [
+    5.1,
+    0.38,
+    4.4
+   ],
+   "half": [
+    0.8,
+    0.38,
+    0.5
+   ],
+   "material": "timber",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "assembly_island",
+   "center": [
+    -0.5,
+    0.46,
+    2.2
+   ],
+   "half": [
+    1.7,
+    0.46,
+    0.4
+   ],
+   "material": "stainless",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "sink",
+   "center": [
+    -5.6,
+    0.46,
+    2.2
+   ],
+   "half": [
+    0.4,
+    0.46,
+    0.6
+   ],
+   "material": "stainless",
+   "collide": true
+  },
+  {
+   "id": "trash",
+   "center": [
+    2.4,
+    0.4,
+    2.2
+   ],
+   "half": [
+    0.22,
+    0.4,
+    0.22
+   ],
+   "material": "dark_metal",
+   "collide": true
+  },
+  {
+   "id": "drinks",
+   "center": [
+    5,
+    0.5,
+    1
+   ],
+   "half": [
+    0.9,
+    0.5,
+    0.35
+   ],
+   "material": "stainless",
+   "collide": true
+  },
+  {
+   "id": "table_1",
+   "center": [
+    -3.5,
+    0.37,
+    -3
+   ],
+   "half": [
+    0.45,
+    0.37,
+    0.45
+   ],
+   "material": "timber",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "table_2",
+   "center": [
+    0,
+    0.37,
+    -3.8
+   ],
+   "half": [
+    0.45,
+    0.37,
+    0.45
+   ],
+   "material": "timber",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "table_3",
+   "center": [
+    3.5,
+    0.37,
+    -3
+   ],
+   "half": [
+    0.45,
+    0.37,
+    0.45
+   ],
+   "material": "timber",
+   "collide": true,
+   "surface": "counter"
+  },
+  {
+   "id": "booth_west",
+   "center": [
+    -5.6,
+    0.25,
+    -3
+   ],
+   "half": [
+    0.35,
+    0.25,
+    1.2
+   ],
+   "material": "red_vinyl",
+   "collide": true
+  },
+  {
+   "id": "sidewalk",
+   "center": [
+    0,
+    -0.12,
+    -8
+   ],
+   "half": [
+    8,
+    0.1,
+    1.8
+   ],
+   "material": "street",
+   "collide": false
+  }
+ ],
+ "CHILLER_DRAWER": {
+  "id": "chiller",
+  "handle": [
+   -1.6,
+   0.62,
+   4.23
+  ],
+  "travel": 0.42,
+  "half": [
+   0.42,
+   0.14,
+   0.3
+  ]
+ },
+ "DISPENSERS": [
+  {
+   "id": "bin_bun_bottom",
+   "kind": "bun_bottom",
+   "center": [
+    -3.85,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_bun_top",
+   "kind": "bun_top",
+   "center": [
+    -3.45,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_cheese",
+   "kind": "cheese",
+   "center": [
+    -3.02,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_swiss",
+   "kind": "swiss",
+   "center": [
+    -2.6,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_lettuce",
+   "kind": "lettuce",
+   "center": [
+    -2.18,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_tomato",
+   "kind": "tomato",
+   "center": [
+    -1.76,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_onion",
+   "kind": "onion",
+   "center": [
+    -1.34,
+    0.92,
+    4.72
+   ],
+   "half": [
+    0.17,
+    0.05,
+    0.2
+   ]
+  },
+  {
+   "id": "bin_pickle",
+   "kind": "pickle",
+   "center": [
+    -1.7,
+    0.92,
+    2.48
+   ],
+   "half": [
+    0.11,
+    0.05,
+    0.085
+   ]
+  },
+  {
+   "id": "bin_jalapeno",
+   "kind": "jalapeno",
+   "center": [
+    -1.45,
+    0.92,
+    2.48
+   ],
+   "half": [
+    0.11,
+    0.05,
+    0.085
+   ]
+  },
+  {
+   "id": "bin_mushroom",
+   "kind": "mushroom",
+   "center": [
+    -1.2,
+    0.92,
+    2.48
+   ],
+   "half": [
+    0.11,
+    0.05,
+    0.085
+   ]
+  },
+  {
+   "id": "bin_bacon",
+   "kind": "bacon",
+   "center": [
+    -0.95,
+    0.92,
+    2.48
+   ],
+   "half": [
+    0.11,
+    0.05,
+    0.085
+   ]
+  },
+  {
+   "id": "bin_egg",
+   "kind": "egg",
+   "center": [
+    -0.7,
+    0.92,
+    2.48
+   ],
+   "half": [
+    0.11,
+    0.05,
+    0.085
+   ]
+  },
+  {
+   "id": "drawer_patty",
+   "kind": "patty",
+   "center": [
+    -1.8,
+    0.66,
+    3.95
+   ],
+   "half": [
+    0.18,
+    0.06,
+    0.24
+   ],
+   "requiresDrawer": 0.55
+  },
+  {
+   "id": "drawer_veggie",
+   "kind": "veggie_patty",
+   "center": [
+    -1.4,
+    0.66,
+    3.95
+   ],
+   "half": [
+    0.18,
+    0.06,
+    0.24
+   ],
+   "requiresDrawer": 0.55
+  },
+  {
+   "id": "tray_stack",
+   "kind": "tray",
+   "center": [
+    -1.95,
+    0.95,
+    2.2
+   ],
+   "half": [
+    0.22,
+    0.05,
+    0.17
+   ]
+  }
+ ],
+ "GRILL_ZONES": [
+  {
+   "id": 0,
+   "rect": {
+    "minX": -0.78,
+    "maxX": -0.26,
+    "minZ": 4.2,
+    "maxZ": 4.9
+   },
+   "y": 0.9,
+   "knob": [
+    -0.52,
+    0.76,
+    4.13
+   ]
+  },
+  {
+   "id": 1,
+   "rect": {
+    "minX": -0.26,
+    "maxX": 0.26,
+    "minZ": 4.2,
+    "maxZ": 4.9
+   },
+   "y": 0.9,
+   "knob": [
+    0,
+    0.76,
+    4.13
+   ]
+  },
+  {
+   "id": 2,
+   "rect": {
+    "minX": 0.26,
+    "maxX": 0.78,
+    "minZ": 4.2,
+    "maxZ": 4.9
+   },
+   "y": 0.9,
+   "knob": [
+    0.52,
+    0.76,
+    4.13
+   ]
+  }
+ ],
+ "INITIAL_ITEMS": [
+  {
+   "kind": "spatula",
+   "position": [
+    1,
+    0.94,
+    2.42
+   ],
+   "yaw": 1.5707963267948966
+  },
+  {
+   "kind": "spatula",
+   "position": [
+    0.6,
+    0.94,
+    2.45
+   ],
+   "yaw": 1.5707963267948966
+  },
+  {
+   "kind": "ketchup_bottle",
+   "position": [
+    0.3,
+    1.01,
+    1.98
+   ]
+  },
+  {
+   "kind": "mustard_bottle",
+   "position": [
+    0.45,
+    1.01,
+    1.98
+   ]
+  },
+  {
+   "kind": "mayo_bottle",
+   "position": [
+    0.6,
+    1.01,
+    1.98
+   ]
+  },
+  {
+   "kind": "bbq_bottle",
+   "position": [
+    0.75,
+    1.01,
+    1.98
+   ]
+  },
+  {
+   "kind": "sauce_bottle",
+   "position": [
+    0.9,
+    1.01,
+    1.98
+   ]
+  },
+  {
+   "kind": "tray",
+   "position": [
+    -0.9,
+    0.93,
+    2.15
+   ]
+  },
+  {
+   "kind": "tray",
+   "position": [
+    -0.2,
+    0.93,
+    2.15
+   ]
+  }
+ ],
+ "ITEMS": {
+  "patty": {
+   "kind": "patty",
+   "label": "Patty",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.055,
+    "halfHeight": 0.012
+   },
+   "layerHeight": 0.024,
+   "mass": 0.12,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 90,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ],
+   "grillable": true
+  },
+  "bun_bottom": {
+   "kind": "bun_bottom",
+   "label": "Bottom bun",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.06,
+    "halfHeight": 0.016
+   },
+   "layerHeight": 0.032,
+   "mass": 0.04,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 20,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "bun_top": {
+   "kind": "bun_top",
+   "label": "Top bun",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.06,
+    "halfHeight": 0.024
+   },
+   "layerHeight": 0.048,
+   "mass": 0.04,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 20,
+   "accepts": []
+  },
+  "cheese": {
+   "kind": "cheese",
+   "label": "Cheese slice",
+   "shape": {
+    "type": "box",
+    "half": [
+     0.045,
+     0.002,
+     0.045
+    ]
+   },
+   "layerHeight": 0.004,
+   "mass": 0.02,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 25,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "lettuce": {
+   "kind": "lettuce",
+   "label": "Lettuce",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.06,
+    "halfHeight": 0.005
+   },
+   "layerHeight": 0.01,
+   "mass": 0.01,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 10,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "tomato": {
+   "kind": "tomato",
+   "label": "Tomato slice",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.04,
+    "halfHeight": 0.005
+   },
+   "layerHeight": 0.01,
+   "mass": 0.015,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 12,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "onion": {
+   "kind": "onion",
+   "label": "Onions",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.04,
+    "halfHeight": 0.004
+   },
+   "layerHeight": 0.008,
+   "mass": 0.01,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 8,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "pickle": {
+   "kind": "pickle",
+   "label": "Pickles",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.035,
+    "halfHeight": 0.003
+   },
+   "layerHeight": 0.006,
+   "mass": 0.008,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 6,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "tray": {
+   "kind": "tray",
+   "label": "Tray",
+   "shape": {
+    "type": "box",
+    "half": [
+     0.2,
+     0.01,
+     0.15
+    ]
+   },
+   "layerHeight": 0.02,
+   "mass": 0.4,
+   "food": false,
+   "tool": false,
+   "grip": "tray",
+   "costCents": 0,
+   "accepts": [
+    "bun_bottom"
+   ]
+  },
+  "spatula": {
+   "kind": "spatula",
+   "label": "Spatula",
+   "shape": {
+    "type": "box",
+    "half": [
+     0.05,
+     0.008,
+     0.16
+    ]
+   },
+   "layerHeight": 0.016,
+   "mass": 0.25,
+   "food": false,
+   "tool": true,
+   "grip": "tool",
+   "costCents": 0,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_bottom",
+    "bun_top",
+    "bacon",
+    "egg",
+    "mushroom",
+    "onion"
+   ]
+  },
+  "sauce_bottle": {
+   "kind": "sauce_bottle",
+   "label": "House sauce",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.03,
+    "halfHeight": 0.09
+   },
+   "layerHeight": 0.18,
+   "mass": 0.35,
+   "food": false,
+   "tool": true,
+   "grip": "bottle",
+   "costCents": 0,
+   "accepts": [],
+   "sauce": "house"
+  },
+  "ketchup_bottle": {
+   "kind": "ketchup_bottle",
+   "label": "Ketchup",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.03,
+    "halfHeight": 0.09
+   },
+   "layerHeight": 0.18,
+   "mass": 0.35,
+   "food": false,
+   "tool": true,
+   "grip": "bottle",
+   "costCents": 0,
+   "accepts": [],
+   "sauce": "ketchup"
+  },
+  "mustard_bottle": {
+   "kind": "mustard_bottle",
+   "label": "Mustard",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.03,
+    "halfHeight": 0.09
+   },
+   "layerHeight": 0.18,
+   "mass": 0.35,
+   "food": false,
+   "tool": true,
+   "grip": "bottle",
+   "costCents": 0,
+   "accepts": [],
+   "sauce": "mustard"
+  },
+  "mayo_bottle": {
+   "kind": "mayo_bottle",
+   "label": "Mayo",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.03,
+    "halfHeight": 0.09
+   },
+   "layerHeight": 0.18,
+   "mass": 0.35,
+   "food": false,
+   "tool": true,
+   "grip": "bottle",
+   "costCents": 0,
+   "accepts": [],
+   "sauce": "mayo"
+  },
+  "bbq_bottle": {
+   "kind": "bbq_bottle",
+   "label": "BBQ sauce",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.03,
+    "halfHeight": 0.09
+   },
+   "layerHeight": 0.18,
+   "mass": 0.35,
+   "food": false,
+   "tool": true,
+   "grip": "bottle",
+   "costCents": 0,
+   "accepts": [],
+   "sauce": "bbq"
+  },
+  "bacon": {
+   "kind": "bacon",
+   "label": "Bacon",
+   "shape": {
+    "type": "box",
+    "half": [
+     0.075,
+     0.003,
+     0.022
+    ]
+   },
+   "layerHeight": 0.006,
+   "mass": 0.02,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 30,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ],
+   "grillable": true
+  },
+  "mushroom": {
+   "kind": "mushroom",
+   "label": "Sliced mushrooms",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.045,
+    "halfHeight": 0.006
+   },
+   "layerHeight": 0.012,
+   "mass": 0.02,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 20,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ],
+   "grillable": true
+  },
+  "egg": {
+   "kind": "egg",
+   "label": "Egg",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.05,
+    "halfHeight": 0.006
+   },
+   "layerHeight": 0.012,
+   "mass": 0.05,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 25,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ],
+   "grillable": true
+  },
+  "jalapeno": {
+   "kind": "jalapeno",
+   "label": "Jalapeños",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.035,
+    "halfHeight": 0.003
+   },
+   "layerHeight": 0.006,
+   "mass": 0.008,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 8,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "swiss": {
+   "kind": "swiss",
+   "label": "Swiss cheese",
+   "shape": {
+    "type": "box",
+    "half": [
+     0.045,
+     0.002,
+     0.045
+    ]
+   },
+   "layerHeight": 0.004,
+   "mass": 0.02,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 30,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ]
+  },
+  "veggie_patty": {
+   "kind": "veggie_patty",
+   "label": "Veggie patty",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.055,
+    "halfHeight": 0.013
+   },
+   "layerHeight": 0.026,
+   "mass": 0.11,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 70,
+   "accepts": [
+    "patty",
+    "veggie_patty",
+    "bun_top",
+    "cheese",
+    "swiss",
+    "lettuce",
+    "tomato",
+    "onion",
+    "pickle",
+    "bacon",
+    "mushroom",
+    "egg",
+    "jalapeno"
+   ],
+   "grillable": true
+  }
+ },
+ "NO_PLACE_RECTS": [
+  {
+   "minX": -4.05,
+   "maxX": -1.15,
+   "minZ": 4.5,
+   "maxZ": 4.95,
+   "y": 0.92
+  },
+  {
+   "minX": -1.83,
+   "maxX": -0.57,
+   "minZ": 2.38,
+   "maxZ": 2.6,
+   "y": 0.92
+  }
+ ],
+ "PICKUP_ZONE": {
+  "minX": -1.4,
+  "maxX": 0.6,
+  "minZ": -0.33,
+  "maxZ": 0.33,
+  "y": 1
+ },
+ "ROOM_BOUNDS": {
+  "minX": -6,
+  "maxX": 6,
+  "minZ": -6,
+  "maxZ": 5,
+  "height": 3.2
+ },
+ "SHIFT_SWITCH": [
+  2.62,
+  0.9,
+  0.37
+ ],
+ "TRASH_ZONE": {
+  "minX": 2.15,
+  "maxX": 2.65,
+  "minZ": 1.95,
+  "maxZ": 2.45,
+  "minY": 0.6,
+  "maxY": 1.4
+ }
+}
