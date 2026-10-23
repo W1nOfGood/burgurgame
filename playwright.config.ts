@@ -12,7 +12,9 @@ const preinstalled = "/opt/pw-browsers/chromium";
 
 export default defineConfig({
   testDir: "tests/e2e",
-  timeout: 120_000,
+  // Two clients each load the Blender-built art (lightmaps, probes, food, rigs) and compile its
+  // shaders in software WebGL, which alone can take a minute per page on a CI runner.
+  timeout: 300_000,
   expect: { timeout: 15_000 },
   workers: 1,
   reporter: [["list"]],

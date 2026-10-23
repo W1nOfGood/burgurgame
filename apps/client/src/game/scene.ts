@@ -228,9 +228,13 @@ export class RestaurantView {
       g.meshes.push(mesh);
       groups.set(k, g);
     }
+    // Never drawn, but Babylon only ray-tests triangles of meshes that have a material: without
+    // one it falls back to a bounding-box hit with no picked point, and surfaces stop being targets.
+    const pickOnly = m.solid("pick_only", [0, 0, 0], 1);
     for (const [k, g] of groups) {
       const merged = mergeGroup(`proxy_${k}`, g.meshes, g.pick);
       if (merged) {
+        merged.material = pickOnly;
         merged.isVisible = false;
         merged.metadata = { ...(merged.metadata ?? {}), placeholder: false, proxy: true };
       }

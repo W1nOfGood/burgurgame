@@ -190,7 +190,7 @@ export class InputManager {
     e.preventDefault();
     this.lastPointer = "touch";
     this.canvas.setPointerCapture(e.pointerId);
-    const track: TouchTrack = { id: e.pointerId, role: "look", startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, startT: performance.now(), moved: false };
+    const track: TouchTrack = { id: e.pointerId, role: "look", startX: e.clientX, startY: e.clientY, lastX: e.clientX, lastY: e.clientY, startT: e.timeStamp, moved: false };
     const looks = [...this.touches.values()].filter((t) => t.role === "look");
     if (looks.length === 1) {
       const other = looks[0]!;
@@ -281,7 +281,8 @@ export class InputManager {
       this.pinch = null;
       return;
     }
-    const quick = performance.now() - t.startT < 450;
+    // Event timestamps, not handling time: a slow frame must not turn a quick tap into a hold.
+    const quick = e.timeStamp - t.startT < 450;
     if (t.role === "capture") this.handlers.primaryUp(e.clientX, e.clientY, "touch", true, t.moved);
     else if (!t.moved && quick) this.handlers.primaryUp(e.clientX, e.clientY, "touch", false, false);
   };
