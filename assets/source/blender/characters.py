@@ -564,15 +564,20 @@ def main() -> None:
         hdr = os.path.join(BUILD, "probe_kitchen.hdr")
         if os.path.exists(hdr):
             food.world_hdr(hdr, 1.0)
-        right[0].location = bl.G(0.11, 1.32, 0.25)
-        right[0].rotation_euler = (0.25, 0.0, 0.0)
-        left[0].location = bl.G(-0.11, 1.32, 0.25)
-        left[0].rotation_euler = (0.25, 0.0, 0.0)
+        # As in game: forearms drop away toward the shoulders, below the camera.
+        right[0].location = bl.G(0.12, 1.3, 0.3)
+        right[0].rotation_euler = (-0.35, 0.0, 0.12)
+        left[0].location = bl.G(-0.12, 1.3, 0.3)
+        left[0].rotation_euler = (-0.35, 0.0, -0.12)
         crew[0].location = bl.G(0.0, 0.0, 2.2)
         crew[0].rotation_euler.z = math.pi
         kit.area_light("key", (0.5, 2.6, -0.5), (1.0, 1.0), 300.0, (1.0, 0.95, 0.88), facing=(-0.3, -1, 0.5), up=(0, 0, 1))
         bl.camera("cam2", (0.0, 1.55, -0.05), (0.0, 1.25, 0.35), lens=26)
+        for o in crew:
+            o.hide_render = True
         bl.render(os.path.join(BUILD, "preview", "hands.jpg"), width=1280, height=720, samples=96, exposure=1.0)
+        for o in crew:
+            o.hide_render = False
         bl.camera("cam", (0.0, 1.45, 0.4), (0.0, 1.1, 2.2), lens=28)
         bl.render(os.path.join(BUILD, "preview", "characters.jpg"), width=1280, height=720, samples=96, exposure=1.0)
         return
