@@ -34,6 +34,7 @@ import {
   PlayerMotor,
   canAddToStack,
   collectTicks,
+  createPhysicsWorld,
   createFoodState,
   createRng,
   dispenserById,
@@ -54,6 +55,7 @@ import {
   stepGrillTemp,
   surfaceAt,
   withinReach,
+  wrapAngle,
   type CustomerPhase,
   type Evaluation,
   type FoodState,
@@ -123,7 +125,6 @@ interface PlayerRt {
   motor: PlayerMotor;
   queue: MoveSample[];
   lastSeq: number;
-  lastInputTick: number;
   credit: number;
   crouch: boolean;
   hold: number;
@@ -224,6 +225,13 @@ export class Kitchen {
   private readonly items = new Map<string, ItemRt>();
   private readonly orders = new Map<string, OrderRt>();
   private readonly customers = new Map<string, CustomerRt>();
+  /**
+   * Player motors live in their own world holding only the static restaurant, exactly like the
+   * client's prediction world. Items don't touch players, but sharing a world with them changes
+   * how contacts are visited, so wall slides came out a few micrometres different from the
+   * client's replay and grew into corrections.
+   */
+  private readonly movePw: PhysicsWorld;
   private customerSeq = 0;
   private pausedAtTick = 0;
   private readonly grillTemps: number[] = GRILL_ZONES.map(() => COOKING.ambientTemp);
@@ -237,6 +245,7 @@ export class Kitchen {
 
   constructor(pw: PhysicsWorld, state: RestaurantState, hooks: KitchenHooks, opts: KitchenOptions) {
     this.pw = pw;
+    this.movePw = createPhysicsWorld(pw.R, pw.world.timestep);
     this.state = state;
     this.hooks = hooks;
     this.rng = createRng(opts.seed ?? Date.now());
@@ -276,15 +285,14 @@ export class Kitchen {
     s.yaw = SPAWN_YAW;
     s.connected = true;
     s.hold = INTERACTION.holdDistanceDefault;
-    const motor = new PlayerMotor(this.pw, spawn);
+    const motor = new PlayerMotor(this.movePw, spawn);
     const rt: PlayerRt = {
       id: sessionId,
       s,
       motor,
       queue: [],
       lastSeq: 0,
-      lastInputTick: this.state.tick,
-      credit: 8,
+      credit: NET.maxQueuedSamples,
       crouch: false,
       hold: INTERACTION.holdDistanceDefault,
       rotYaw: 0,
@@ -365,12 +373,11 @@ export class Kitchen {
       p.lastSeq = sample.seq;
       p.queue.push({ ...sample, pitch: Math.max(-PLAYER.maxPitch, Math.min(PLAYER.maxPitch, sample.pitch)) });
     }
-    // Bounded queue: discard the oldest motion rather than building a backlog.
+    // Bounded queue (2 s): only a client sending faster than real time reaches the bound.
     if (p.queue.length > NET.maxQueuedSamples) p.queue.splice(0, p.queue.length - NET.maxQueuedSamples);
     if (msg.hold !== undefined) p.hold = msg.hold;
-    if (msg.rotYaw !== undefined) p.rotYaw = msg.rotYaw;
+    if (msg.rotYaw !== undefined) p.rotYaw = wrapAngle(msg.rotYaw);
     if (msg.rotPitch !== undefined) p.rotPitch = msg.rotPitch;
-    p.lastInputTick = this.state.tick;
   }
 
   setAway(sessionId: string, away: boolean): void {
@@ -654,7 +661,7 @@ export class Kitchen {
     const spot = this.resolveSpot(moving, { x: point.x, y: surf.y, z: point.z }, surf.kind === "grill");
     if (spot.stackOn) return this.stackOnto(p, held, moving, spot.stackOn);
     if (!spot.pos) return fail("No room there");
-    this.putDown(p, held, moving, spot.pos, quatYaw(yaw ?? p.s.yaw));
+    this.putDown(p, held, moving, spot.pos, quatYaw(wrapAngle(yaw ?? p.s.yaw)));
     return OK;
   }
 
@@ -1178,11 +1185,13 @@ export class Kitchen {
       return;
     }
 
-    // Players: consume exactly the samples each client simulated, one per tick, with bounded
-    // catch-up credit so a client cannot move faster than real time on average.
+    // Players: consume exactly the samples each client simulated — never fewer, or the client's
+    // prediction is pulled back. One per tick; after a stall (input arrives in a burst) up to
+    // maxCatchUpSamplesPerTick, paid for with credit earned one per tick, so a client cannot
+    // move faster than real time on average.
     for (const p of this.players.values()) {
-      p.credit = Math.min(8, p.credit + 1);
-      const n = p.queue.length > 4 ? 2 : 1;
+      p.credit = Math.min(NET.maxQueuedSamples, p.credit + 1);
+      const n = p.queue.length > 8 ? NET.maxCatchUpSamplesPerTick : p.queue.length > 3 ? 2 : 1;
       for (let i = 0; i < n && p.credit >= 1; i++) {
         const sample = p.queue.shift();
         if (!sample) break;
@@ -1202,7 +1211,6 @@ export class Kitchen {
         p.s.vy = m.vy;
         p.s.vz = m.vz;
       }
-      if (st.tick - p.lastInputTick > (NET.staleInputMs / 1000) * NET.tickHz) p.queue.length = 0;
       if (p.s.hold !== p.hold) p.s.hold = p.hold;
     }
 
@@ -1699,6 +1707,7 @@ export class Kitchen {
     this.players.clear();
     this.items.clear();
     this.customers.clear();
+    this.movePw.dispose();
   }
 }
 

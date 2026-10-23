@@ -11,12 +11,21 @@ export const NET = {
   inputSendHz: 30,
   /** Upper bound on samples a single input message may carry. */
   maxSamplesPerMessage: 6,
-  /** Upper bound on samples buffered per player on the server. Older samples are dropped. */
-  maxQueuedSamples: 12,
-  /** If no input arrives for this long, the server clears held movement. */
-  staleInputMs: 250,
-  /** Initial remote interpolation delay. */
+  /**
+   * Movement samples buffered per player on the server (2 s). Every sample a client simulated
+   * must also run on the server, or its prediction disagrees and the player is pulled back; on
+   * long routes input arrives in bursts after stalls, so the queue must absorb them. Only a
+   * client that sends more than real time can fill it.
+   */
+  maxQueuedSamples: 120,
+  /** Samples the server may run for one player in one tick while catching up on a burst. */
+  maxCatchUpSamplesPerTick: 4,
+  /** Smallest remote interpolation delay; it grows with measured arrival jitter. */
   interpolationDelayMs: 100,
+  /** Largest remote interpolation delay. */
+  maxInterpolationDelayMs: 500,
+  /** How far past the newest snapshot remote motion may be extrapolated when data runs late. */
+  maxExtrapolationMs: 100,
   /** Reconnect grace period for dropped connections. */
   reconnectGraceSeconds: 60,
   /** Maximum fixed steps the server will run to catch up after a stall. */

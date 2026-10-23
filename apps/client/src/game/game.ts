@@ -45,6 +45,7 @@ import {
   sizzleLevel,
   stackOffsets,
   surfaceAt,
+  wrapAngle,
   type CustomerPhase,
   type Rapier,
 } from "@ahb/simulation";
@@ -544,10 +545,11 @@ export class Game {
     const holding = this.heldId() !== null || this.heldOverride?.kind != null;
     if (!this.capture) {
       if (this.input.rotating && holding) {
-        this.rotYaw += f.rotDX;
+        this.rotYaw = wrapAngle(this.rotYaw + f.rotDX);
         this.rotPitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.rotPitch + f.rotDY));
       }
-      this.yaw += f.lookDX;
+      // Wrapped: the yaw goes out in every move sample and place (an endless turn must stay valid).
+      this.yaw = wrapAngle(this.yaw + f.lookDX);
       this.pitch = Math.max(-PLAYER.maxPitch, Math.min(PLAYER.maxPitch, this.pitch + f.lookDY));
     }
     if (f.hold !== 0) this.hold = InputManager.clampHold(this.hold + f.hold);
@@ -1290,7 +1292,7 @@ export class Game {
 
   /** Test hook: aim the camera precisely. */
   debugLook(yaw: number, pitch: number): void {
-    this.yaw = yaw;
+    this.yaw = wrapAngle(yaw);
     this.pitch = pitch;
   }
 }
