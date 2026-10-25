@@ -26,6 +26,7 @@ import {
   NET,
   PLAYER,
   RECIPES,
+  drinkById,
   isPatty,
   isSauceBottle,
   type ItemKind,
@@ -72,6 +73,7 @@ export interface GameHooks {
   openPing(): void;
   openRecipes(): void;
   openSupplies(): void;
+  openRegister(): void;
   leave(reason: string, code: number): void;
 }
 
@@ -688,7 +690,7 @@ export class Game {
       const pose = customerPose({ phase: c.phase as CustomerPhase, phaseAt: c.phaseAt, spot: c.spot, seed: c.seed, angry: c.angry }, custTick);
       const order = c.order ? state.orders.get(c.order) : undefined;
       const showTicket = order && (c.phase === "waiting" || c.phase === "collecting") ? order.number : null;
-      view.update(pose, showTicket, dt);
+      view.update(pose, showTicket, dt, c.phase === "ordering");
       nearDoor = Math.min(nearDoor, Math.hypot(pose.x, pose.z - FRONT_DOOR.z));
     }
     const doorTarget = nearDoor < FRONT_DOOR.openDistance ? 1 : 0;
@@ -862,6 +864,7 @@ export class Game {
         customer: o.customer,
         label: RECIPES[o.recipe as RecipeId]?.label ?? o.recipe,
         mods: [...o.modifiers].map((mm) => MODIFIERS[mm as ModifierId]?.label ?? mm),
+        extras: [...(o.side ? ["Fries"] : []), ...(o.drink ? [drinkById(o.drink)?.label ?? o.drink] : [])],
         wait: state.shiftTime - o.createdAt,
         // Off by default: cooks are meant to learn the builds.
         hint: this.settings.showRecipeHints ? recipeHint(o.recipe as RecipeId) : undefined,
@@ -1054,6 +1057,10 @@ export class Game {
         return `${click}/${touch ? "Use" : "E"}: ${st.phase === "open" ? "close up" : "open restaurant"}`;
       case "computer":
         return `${click}/${touch ? "Use" : "E"}: order supplies`;
+      case "register": {
+        const waiting = [...st.customers.values()].filter((c) => c.phase === "ordering").length;
+        return `${click}/${touch ? "Use" : "E"}: ${waiting > 0 ? `take order (${waiting} waiting)` : "register"}`;
+      }
       case "trash":
         return null;
       case "player":
@@ -1206,6 +1213,9 @@ export class Game {
       case "computer":
         this.hooks.openSupplies();
         return;
+      case "register":
+        this.hooks.openRegister();
+        return;
       default:
         return;
     }
@@ -1344,6 +1354,7 @@ export class Game {
       case "flick": {
         if (t?.pick.type === "switch" && a === "use") return this.toggleShift();
         if (t?.pick.type === "computer" && a === "use" && !heldKind) return this.hooks.openSupplies();
+        if (t?.pick.type === "register" && a === "use" && !heldKind) return this.hooks.openRegister();
         if (heldKind && t?.pick.type === "player" && a === "use") {
           void this.run(MSG.offer, { to: t.pick.id }).then((r) => r.ok && this.ui.toast("Holding it out — your teammate can take it", "info", 1800));
           this.hold = INTERACTION.offerDistance;
@@ -1450,6 +1461,11 @@ export class Game {
       return null;
     }
     return this.instrumentation.drawCallsCounter.lastSecAverage || this.instrumentation.drawCallsCounter.current;
+  }
+
+  /** Rings up what the cashier heard for a customer; resolves with the server's answer. */
+  ringUp(customer: string, order: { recipe: string; modifiers: string[]; drink: string; side: string }): Promise<ResultMessage> {
+    return this.run(MSG.ring, { customer, ...order });
   }
 
   /** Orders supplies from the office computer; resolves with the server's answer. */

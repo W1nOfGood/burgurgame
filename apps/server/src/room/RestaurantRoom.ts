@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Room, ServerError, matchMaker, type AuthContext, type Client } from "@colyseus/core";
-import { NET, ROOM, type StockKey } from "@ahb/data";
+import { NET, ROOM, type DrinkId, type StockKey } from "@ahb/data";
 import { createPhysicsWorld, type PhysicsWorld, type Rapier } from "@ahb/simulation";
 import {
   MSG,
@@ -21,6 +21,7 @@ import {
   shiftSchema,
   tutorialSchema,
   buySchema,
+  ringSchema,
   spatulaSchema,
   squeezeSchema,
   type JoinOptions,
@@ -508,6 +509,9 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     this.on(MSG.offer, offerSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.offer(client.sessionId, msg.to)));
     this.on(MSG.spatula, spatulaSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.spatula(client.sessionId, msg.action, msg.item, msg.rev)));
     this.on(MSG.shift, shiftSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.shiftSwitch(client.sessionId, msg.action)));
+    this.on(MSG.ring, ringSchema, (client, msg) =>
+      this.command(client, msg.cmd, (k) => k.ring(client.sessionId, msg.customer, { recipe: msg.recipe, modifiers: msg.modifiers, drink: msg.drink as DrinkId | "", side: msg.side })),
+    );
     this.on(MSG.buy, buySchema, (client, msg) => void this.buy(client, msg.cmd, msg.stock, msg.packs));
     this.on(MSG.tutorial, tutorialSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.tutorial(client.sessionId, msg.action)));
     this.on(MSG.pause, pauseSchema, (client, msg) =>

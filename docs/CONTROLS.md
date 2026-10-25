@@ -16,6 +16,8 @@ the game switches to cursor mode: aim with the cursor and hold the right mouse b
 | Rotate held item | Hold right mouse and move |
 | Hold closer / farther | Mouse wheel |
 | Contextual use: flip with spatula, hand an item to a teammate, flip the OPEN sign | E |
+| Take a customer's order (aim at the cash register), order supplies (aim at the office monitor) | E or click |
+| Network overlay: ping, server tick rate, corrections | F3 |
 | Set down safely | Q |
 | Inspect (doneness, temperature, sauces) | Hold F |
 | Recipe book | R |

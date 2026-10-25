@@ -29,6 +29,7 @@ import {
   MODIFIERS,
   SHIFT_SWITCH,
   TRASH_ZONE,
+  drinkById,
   formatCents,
   type ItemKind,
   type ModifierId,
@@ -54,6 +55,7 @@ export type PickInfo =
   | { type: "dispenser"; id: string; kind: ItemKind }
   | { type: "switch" }
   | { type: "computer" }
+  | { type: "register" }
   | { type: "trash" }
   | { type: "player"; id: string }
   | { type: "static" };
@@ -225,7 +227,9 @@ export class RestaurantView {
           ? { type: "trash" }
           : box.id === "office_screen"
             ? { type: "computer" }
-            : box.collide
+            : box.id === "register"
+              ? { type: "register" }
+              : box.collide
               ? { type: "static" }
               : null;
       if (!pick) continue;
@@ -903,11 +907,20 @@ export class RestaurantView {
 
     this.ticketTimer -= dt;
     const orders = [...state.orders.values()].filter((o) => o.status === "open").sort((a, b) => a.number - b.number);
-    const key = orders.map((o) => `${o.number}:${o.modifiers.join("+")}`).join("|");
+    const key = orders.map((o) => `${o.number}:${o.modifiers.join("+")}:${o.side}:${o.drink}`).join("|");
     if (key !== this.ticketKey || this.ticketTimer <= 0) {
       this.ticketKey = key;
       this.ticketTimer = 1;
-      this.drawTickets(orders.map((o) => ({ number: o.number, customer: o.customer, recipe: o.recipe as RecipeId, modifiers: [...o.modifiers] as ModifierId[], wait: state.shiftTime - o.createdAt })));
+      this.drawTickets(
+        orders.map((o) => ({
+          number: o.number,
+          customer: o.customer,
+          recipe: o.recipe as RecipeId,
+          modifiers: [...o.modifiers] as ModifierId[],
+          extras: [...(o.side ? ["fries"] : []), ...(o.drink ? [drinkById(o.drink)?.label ?? o.drink] : [])],
+          wait: state.shiftTime - o.createdAt,
+        })),
+      );
     }
     const boardKey = `${state.name}|${state.balance}`;
     if (boardKey !== this.boardKey) {
@@ -916,7 +929,7 @@ export class RestaurantView {
     }
   }
 
-  private drawTickets(orders: { number: number; customer: string; recipe: RecipeId; modifiers: ModifierId[]; wait: number }[]): void {
+  private drawTickets(orders: { number: number; customer: string; recipe: RecipeId; modifiers: ModifierId[]; extras: string[]; wait: number }[]): void {
     const ctx = this.ticketTex.getContext() as unknown as CanvasRenderingContext2D;
     const w = 1024;
     const h = 134;
@@ -938,6 +951,8 @@ export class RestaurantView {
       ctx.fillText(RECIPES[o.recipe].label.replace("Cheeseburger", "Cheese").slice(0, 14), x + 8, 79);
       ctx.fillStyle = "#a93226";
       o.modifiers.forEach((mod, j) => ctx.fillText(MODIFIERS[mod].label.toUpperCase().slice(0, 14), x + 8, 101 + j * 20));
+      ctx.fillStyle = "#1f5f8b";
+      o.extras.forEach((ex, j) => ctx.fillText(`+ ${ex.toUpperCase()}`.slice(0, 14), x + 8, 101 + (o.modifiers.length + j) * 20));
       ctx.fillStyle = "#6e6259";
       ctx.font = "16px ui-monospace, monospace";
       ctx.fillText(`${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}`, x + 106, 38);

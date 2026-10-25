@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { NET, SHIFT, customerName, type StockKey } from "@ahb/data";
-import { collectTicks, createPhysicsWorld, initPhysics, phaseTicks, type Rapier } from "@ahb/simulation";
+import { collectTicks, createPhysicsWorld, initPhysics, phaseTicks, speak, type Rapier, type WantedOrder } from "@ahb/simulation";
 import { RestaurantState, type CustomerState } from "@ahb/protocol";
 import { Kitchen, type KitchenHooks, type ServeRequest } from "./kitchen.js";
 
@@ -23,6 +23,28 @@ function kitchen(mode: "relaxed" | "normal" = "relaxed", auto = false): { k: Kit
   (k as unknown as { openShift(): void }).openShift();
   if (!auto) (k as unknown as { nextOrderAt: number }).nextOrderAt = Infinity;
   return { k, state, toasts };
+}
+
+/** A cashier standing behind the register. */
+function cashier(k: Kitchen): string {
+  k.addPlayer("cashier", { name: "Cashier", platform: "desktop" });
+  k.debugPlacePlayer("cashier", { x: -3.5, y: 0, z: 0.9 }, Math.PI, 0.5);
+  return "cashier";
+}
+
+/** What a customer wants (they said it at the counter; the cashier has to ring it up). */
+function wanted(k: Kitchen, id: string): WantedOrder {
+  return (k as unknown as { customers: Map<string, { want: WantedOrder }> }).customers.get(id)!.want;
+}
+
+function idOf(state: RestaurantState, c: CustomerState): string {
+  return [...state.customers.entries()].find(([, v]) => v === c)![0];
+}
+
+/** Rings up exactly what the customer said. */
+function ringUp(k: Kitchen, state: RestaurantState, c: CustomerState) {
+  const id = idOf(state, c);
+  return k.ring("cashier", id, wanted(k, id));
 }
 
 function step(k: Kitchen, ticks: number): void {
@@ -48,16 +70,72 @@ describe("walk-in customers", () => {
     expect(c.spot).toBe(0);
     expect(state.orders.size).toBe(0);
     step(k, c.phaseAt + phaseTicks(timeline(c)) - state.tick + 1);
+    // At the counter they say what they want; nothing prints until someone rings it up.
+    expect(c.phase).toBe("ordering");
+    expect(c.say).toBe(speak(wanted(k, idOf(state, c))));
+    expect(state.orders.size).toBe(0);
+    cashier(k);
+    expect(ringUp(k, state, c)).toEqual({ ok: true });
     expect(c.phase).toBe("waiting");
     const order = state.orders.get(c.order)!;
     expect(order.status).toBe("open");
     expect(order.customer).toBe(customerName(c.seed));
   });
 
+  it("send the cashier back when the order is wrong, and say what is wrong", () => {
+    const { k, state } = kitchen();
+    const c = k.spawnCustomer(2)!;
+    step(k, phaseTicks(timeline(c)) + 1);
+    cashier(k);
+    const id = idOf(state, c);
+    const want = wanted(k, id);
+    const other = want.recipe === "hamburger" ? "classic_cheeseburger" : "hamburger";
+    const wrong = k.ring("cashier", id, { ...want, recipe: other });
+    expect(wrong.ok).toBe(false);
+    expect(wrong.ok === false && wrong.reason).toContain("not the burger I asked for");
+    expect(c.phase).toBe("ordering");
+    expect(state.orders.size).toBe(0);
+    expect(k.ring("cashier", id, want)).toEqual({ ok: true });
+    // Rung twice: the customer has moved on.
+    expect(k.ring("cashier", id, want).ok).toBe(false);
+  });
+
+  it("need the cashier at the register", () => {
+    const { k, state } = kitchen();
+    const c = k.spawnCustomer(2)!;
+    step(k, phaseTicks(timeline(c)) + 1);
+    cashier(k);
+    k.debugPlacePlayer("cashier", { x: 3, y: 0, z: 3 }, 0, 0.5);
+    const res = ringUp(k, state, c);
+    expect(res.ok).toBe(false);
+    expect(res.ok === false && res.reason).toMatch(/register/);
+  });
+
+  it("walk out when nobody takes their order (normal mode only)", () => {
+    const normal = kitchen("normal");
+    const c = normal.k.spawnCustomer(2)!;
+    step(normal.k, phaseTicks(timeline(c)) + 1);
+    expect(c.phase).toBe("ordering");
+    normal.state.shiftTime += SHIFT.orderPatienceSeconds + 1;
+    step(normal.k, 2);
+    expect(c.phase).toBe("leaving");
+    expect(c.angry).toBe(true);
+    expect(normal.toasts.some((t) => t.includes("nobody took their order"))).toBe(true);
+
+    const relaxed = kitchen("relaxed");
+    const r = relaxed.k.spawnCustomer(2)!;
+    step(relaxed.k, phaseTicks(timeline(r)) + 1);
+    relaxed.state.shiftTime += SHIFT.orderPatienceSeconds * 5;
+    step(relaxed.k, 2);
+    expect(r.phase).toBe("ordering");
+  });
+
   it("take the food at the shelf after it is paid for, then walk out", () => {
     const { k, state } = kitchen();
     const c = k.spawnCustomer(42)!;
     step(k, phaseTicks(timeline(c)) + 1);
+    cashier(k);
+    expect(ringUp(k, state, c).ok).toBe(true);
     expect(c.phase).toBe("waiting");
     const tray = [...state.items.entries()].find(([, it]) => it.kind === "tray")![0];
     const handed: number[] = [];
@@ -86,6 +164,8 @@ describe("walk-in customers", () => {
     const { k, state, toasts } = kitchen("normal");
     const c = k.spawnCustomer(3)!;
     step(k, phaseTicks(timeline(c)) + 1);
+    cashier(k);
+    expect(ringUp(k, state, c).ok).toBe(true);
     expect(c.phase).toBe("waiting");
     const order = state.orders.get(c.order)!;
     state.shiftTime = order.createdAt + SHIFT.patienceSeconds * 2 + 1;
@@ -112,6 +192,8 @@ describe("walk-in customers", () => {
     const { k, state } = kitchen();
     const c = k.spawnCustomer(9)!;
     step(k, phaseTicks(timeline(c)) + 1);
+    cashier(k);
+    expect(ringUp(k, state, c).ok).toBe(true);
     const snap = k.snapshot();
     const { k: k2, state: s2 } = kitchen();
     k2.restore(snap, []);
@@ -121,14 +203,16 @@ describe("walk-in customers", () => {
     expect(s2.orders.get(c2.order)!.customer).toBe(state.orders.get(c.order)!.customer);
   });
 
-  it("let the shift close only after everyone walking in has ordered", () => {
+  it("tell customers still at the counter you're closed, and finish the shift", () => {
     const { k, state } = kitchen();
     const c = k.spawnCustomer(4)!;
     state.phase = "closing";
     step(k, 10);
-    expect(state.phase).toBe("closing");
+    expect(state.phase).toBe("closing"); // someone is still walking in
     step(k, phaseTicks(timeline(c)));
-    expect(state.orders.get(c.order)!.status).toBe("open");
-    expect(state.phase).toBe("closing");
+    expect(c.phase).toBe("leaving");
+    expect(state.orders.size).toBe(0);
+    step(k, phaseTicks(timeline(c)) + 2);
+    expect(state.phase).toBe("prep");
   });
 });

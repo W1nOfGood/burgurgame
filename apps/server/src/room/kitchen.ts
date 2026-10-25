@@ -22,7 +22,9 @@ import {
   SODA_FOUNTAIN,
   SPAWN_POINTS,
   SPAWN_YAW,
+  FRIES_ENABLED,
   OFFICE_COMPUTER,
+  REGISTER,
   RESTOCK_PACKS,
   STARTING_STOCK,
   STOCK_KEYS,
@@ -46,6 +48,8 @@ import {
   PlayerMotor,
   canAddToStack,
   collectTicks,
+  compareOrders,
+  speak,
   createPhysicsWorld,
   createFoodState,
   createRng,
@@ -69,6 +73,7 @@ import {
   withinReach,
   wrapAngle,
   type CustomerPhase,
+  type WantedOrder,
   type Evaluation,
   type FoodState,
   type MoveSample,
@@ -185,6 +190,10 @@ interface CustomerRt {
   s: CustomerState;
   /** Tick at which the current phase ends on its own (Infinity while waiting). */
   endsAt: number;
+  /** What they will say they want at the counter. */
+  want: WantedOrder;
+  /** Shift time they started waiting to be rung up. */
+  orderingSince: number;
   /** Their tray (and drink), taken when they reach for the food (tick). */
   handover: { trayId: string; cupId?: string; tick: number } | null;
 }
@@ -1502,10 +1511,10 @@ export class Kitchen {
       const interval = base / (1 + SHIFT.perPlayerPressure * (players - 1));
       const openCount = [...this.orders.values()].filter((o) => o.s.status === "open").length;
       const maxOpen = st.tutorial ? 1 : SHIFT.maxOpenOrdersBase + players - 1;
-      if (st.tutorial && (this.tutorialOrder() || this.arrivingCount() > 0)) {
+      if (st.tutorial && (this.customers.size > 0 || this.tutorialOrder())) {
         // The tutorial customer waits for as long as it takes; nobody else comes in meanwhile.
       } else if (st.shiftTime >= this.nextOrderAt) {
-        if (openCount + this.arrivingCount() < maxOpen) this.spawnCustomer();
+        if (openCount + this.arrivingCount() + this.orderingCount() < maxOpen) this.spawnCustomer();
         this.nextOrderAt = st.shiftTime + interval * (0.75 + this.rng() * 0.5);
       }
       if (st.mode === "normal" && !st.tutorial && st.shiftTime >= SHIFT.normalShiftSeconds) {
@@ -1513,6 +1522,17 @@ export class Kitchen {
         st.shiftSwitch = false;
         this.hooks.broadcastToast("Last orders — the shift is closing", "info");
       }
+    }
+    // Nobody left at the counter once the sign says CLOSED; in normal mode customers also give up
+    // if nobody takes their order in time.
+    for (const c of this.customers.values()) {
+      if (c.s.phase !== "ordering") continue;
+      const closed = st.phase === "closing";
+      const impatient = st.mode === "normal" && !st.tutorial && st.shiftTime - c.orderingSince > SHIFT.orderPatienceSeconds;
+      if (!closed && !impatient) continue;
+      this.setCustomerPhase(c, "leaving", st.tick, true);
+      c.s.say = "";
+      this.hooks.broadcastToast(closed ? `${customerName(c.s.seed)} was told you're closed` : `${customerName(c.s.seed)} left — nobody took their order`, "warn");
     }
     // Customers eventually give up in normal mode; relaxed mode lets you practise.
     if (st.mode === "normal" && !st.tutorial) {
@@ -1541,6 +1561,43 @@ export class Kitchen {
     return RECIPE_IDS.filter((id) => RECIPES[id].enabled && !RECIPES[id].tutorialOnly && RECIPES[id].tier <= tier);
   }
 
+  /** What the next customer wants (the tutorial's first customer always wants the Starter Burger). */
+  private pickOrder(): WantedOrder {
+    if (this.state.tutorial && ![...this.customers.values()].some((c) => c.want.recipe === "starter")) {
+      return { recipe: "starter", modifiers: [], drink: DRINKS_ENABLED ? "cola" : "", side: "" };
+    }
+    const recipe = this.randomRecipe();
+    return { recipe, modifiers: this.randomModifiers(recipe), drink: this.randomDrink(), side: FRIES_ENABLED && this.rng() < 0.4 ? "fries" : "" };
+  }
+
+  /**
+   * The cashier rings up what they heard for the customer at the counter. A matching order prints
+   * its ticket and sends the customer to wait for their food; anything else is sent back with
+   * what is wrong.
+   */
+  ring(sessionId: string, customerId: string, rung: WantedOrder): IntentResult {
+    const p = this.player(sessionId);
+    if (!p) return fail("Not connected");
+    if (this.state.paused) return fail("The room is paused");
+    const reach = this.canReach(p, { x: REGISTER[0], y: REGISTER[1], z: REGISTER[2] }, 0.4);
+    if (!reach.ok) return fail("Step up to the register to take orders");
+    const c = this.customers.get(customerId);
+    if (!c || c.s.phase !== "ordering") return fail("They've already been served or left");
+    const problems = compareOrders(c.want, rung);
+    if (problems.length > 0) return fail(`${customerName(c.s.seed)}: "${problems[0]}"`);
+    const order = this.addOrder(rung.recipe, [...rung.modifiers], customerName(c.s.seed), rung.drink, rung.side);
+    c.s.order = order.id;
+    c.s.say = "";
+    this.setCustomerPhase(c, "waiting", this.state.tick);
+    return OK;
+  }
+
+  private orderingCount(): number {
+    let n = 0;
+    for (const c of this.customers.values()) if (c.s.phase === "ordering") n++;
+    return n;
+  }
+
   private randomRecipe(): RecipeId {
     const pool = this.unlockedRecipes();
     return pool[Math.floor(this.rng() * pool.length)] ?? "classic_cheeseburger";
@@ -1555,7 +1612,7 @@ export class Kitchen {
     return this.rng() < DRINK_CHANCE ? DRINK_IDS[Math.floor(this.rng() * DRINK_IDS.length)]! : "";
   }
 
-  private addOrder(recipe: RecipeId, modifiers: ModifierId[] | undefined, customer: string, drink: DrinkId | ""): OrderRt {
+  private addOrder(recipe: RecipeId, modifiers: ModifierId[] | undefined, customer: string, drink: DrinkId | "", side: "fries" | "" = ""): OrderRt {
     const st = this.state;
     const number = st.nextOrder;
     st.nextOrder = number >= 999 ? 1 : number + 1;
@@ -1566,6 +1623,7 @@ export class Kitchen {
     o.status = "open";
     o.customer = customer;
     o.drink = drink;
+    o.side = side;
     const mods = modifiers ?? this.randomModifiers(recipe);
     for (const m of mods) o.modifiers.push(m);
     const id = `o${number}_${Math.floor(st.shiftTime * 10)}`;
@@ -1598,7 +1656,9 @@ export class Kitchen {
     s.seed = seed ?? Math.floor(this.rng() * 65536);
     s.spot = spot;
     const id = `c${++this.customerSeq}`;
-    const c: CustomerRt = { id, s, endsAt: 0, handover: null };
+    const want = this.pickOrder();
+    s.say = speak(want);
+    const c: CustomerRt = { id, s, want, orderingSince: 0, endsAt: 0, handover: null };
     this.setCustomerPhase(c, "arriving", this.state.tick);
     this.customers.set(id, c);
     this.state.customers.set(id, s);
@@ -1632,13 +1692,10 @@ export class Kitchen {
       }
       if (now < c.endsAt) continue;
       if (c.s.phase === "arriving") {
-        // At the counter: now they order.
-        const tutorial = this.state.tutorial && !this.tutorialOrder();
-        const order = tutorial
-          ? this.addOrder("starter", [], customerName(c.s.seed), DRINKS_ENABLED ? "cola" : "")
-          : this.addOrder(this.randomRecipe(), undefined, customerName(c.s.seed), this.randomDrink());
-        c.s.order = order.id;
-        this.setCustomerPhase(c, "waiting", c.endsAt);
+        // At the counter, ready to order: nothing prints until the cashier rings them up.
+        c.orderingSince = this.state.shiftTime;
+        this.setCustomerPhase(c, "ordering", c.endsAt);
+        this.hooks.broadcastToast(`${customerName(c.s.seed)} is at the counter — ring them up at the register`, "info");
       } else if (c.s.phase === "collecting") {
         this.setCustomerPhase(c, "leaving", c.endsAt);
       } else if (c.s.phase === "leaving") {

@@ -8,3 +8,4 @@ export * from "./movement.js";
 export * from "./fixedStep.js";
 export * from "./rng.js";
 export * from "./customers.js";
+export * from "./pos.js";

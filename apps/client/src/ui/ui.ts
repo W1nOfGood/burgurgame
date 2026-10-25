@@ -1,5 +1,6 @@
-import { CATALOG_KEYS, ITEMS, MAX_PACKS_PER_ORDER, RECIPES, RESTOCK_PACKS, SAUCE_LABEL, STOCK_LABEL, formatCents, type ItemKind, type StockKey } from "@ahb/data";
+import { CATALOG_KEYS, DRINKS, ITEMS, MAX_PACKS_PER_ORDER, MODIFIERS, RECIPE_IDS, modifiersFor, type ModifierId, type RecipeId, RECIPES, RESTOCK_PACKS, SAUCE_LABEL, STOCK_LABEL, formatCents, type ItemKind, type StockKey } from "@ahb/data";
 import { PING_PRESETS, PING_TEXT, type PingPreset, type ResultMessage, type ServedMessage, type SummaryMessage } from "@ahb/protocol";
+import { TILL_HAS } from "@ahb/simulation";
 import { DEFAULT_BINDINGS, defaultSettings, type GraphicsPreset, type Settings } from "../settings.js";
 
 /**
@@ -218,6 +219,147 @@ export class Ui {
     s.querySelector("#copy")!.addEventListener("click", cb.copyCode);
     s.querySelector("#export")?.addEventListener("click", cb.exportSave);
     this.show(s);
+  }
+
+  /**
+   * The cash register. A customer at the counter says what they want; the cashier rings up the
+   * burger, the changes, the drink and the sides, and sends it to the kitchen. The ticket prints
+   * only when it is what they asked for (the customer says what is wrong when it is not).
+   */
+  showRegister(
+    read: () => { tutorial: boolean; customers: { id: string; name: string; say: string }[] },
+    ring: (customer: string, order: { recipe: string; modifiers: string[]; drink: string; side: string }) => Promise<ResultMessage>,
+    onClose: () => void,
+  ): void {
+    const s = el("section", "screen register");
+    const pick = { recipe: "" as RecipeId | "", mods: new Set<ModifierId>(), drink: "", side: "", customer: "" };
+    const recipes = (tutorial: boolean) =>
+      RECIPE_IDS.filter((id) => RECIPES[id].enabled && (tutorial || !RECIPES[id].tutorialOnly)).sort((a, b) => RECIPES[a].tier - RECIPES[b].tier || RECIPES[a].priceCents - RECIPES[b].priceCents);
+    s.innerHTML = `
+      <h2>Register</h2>
+      <div class="pos-who"></div>
+      <div class="pos-grid">
+        <div>
+          <h3>Burger</h3>
+          <div class="pos-menu"></div>
+          <h3 class="pos-mods-h">Changes</h3>
+          <div class="pos-mods"></div>
+          <div class="pos-extras"></div>
+        </div>
+        <aside class="pos-ticket">
+          <h3>Ticket</h3>
+          <ul></ul>
+          <p class="pos-total"></p>
+          <p class="msg" role="status"></p>
+          <button class="btn primary" id="send">Send to kitchen</button>
+          <button class="btn ghost" id="clear">Clear</button>
+        </aside>
+      </div>
+      <button class="btn" id="close">Done</button>`;
+    const q = <T extends HTMLElement>(sel: string) => s.querySelector<T>(sel)!;
+    const msg = q(".msg");
+    let menuKey = "";
+    let tutorial = false;
+    const total = (): number => {
+      if (!pick.recipe) return 0;
+      let c = RECIPES[pick.recipe].priceCents;
+      for (const m of pick.mods) c += MODIFIERS[m].priceDeltaCents;
+      if (pick.drink) c += DRINKS.find((d) => d.id === pick.drink)?.priceCents ?? 0;
+      if (pick.side) c += 300;
+      return c;
+    };
+    const chip = (label: string, on: boolean, attrs: string) => `<button class="chip-btn ${on ? "on" : ""}" ${attrs}>${esc(label)}</button>`;
+    const paint = (): void => {
+      const { customers, tutorial: tut } = read();
+      tutorial = tut;
+      if (!customers.some((c) => c.id === pick.customer)) pick.customer = customers[0]?.id ?? "";
+      const cur = customers.find((c) => c.id === pick.customer);
+      q(".pos-who").innerHTML = cur
+        ? `<p class="who-line"><b>${esc(cur.name)}</b> <span class="quote">“${esc(cur.say)}”</span></p>${customers.length > 1 ? `<p class="fine">Also waiting: ${customers.filter((c) => c !== cur).map((c) => `<button class="link" data-cust="${c.id}">${esc(c.name)}</button>`).join(", ")}</p>` : ""}`
+        : `<p class="fine">Nobody is at the counter. Customers who walk up will say their order here.</p>`;
+      const key = `${tutorial}|${pick.recipe}|${[...pick.mods].join()}|${pick.drink}|${pick.side}`;
+      if (key !== menuKey) {
+        menuKey = key;
+        q(".pos-menu").innerHTML = recipes(tutorial)
+          .map((id) => chip(`${RECIPES[id].label} · ${formatCents(RECIPES[id].priceCents)}`, pick.recipe === id, `data-recipe="${id}"`))
+          .join("");
+        const mods = pick.recipe ? modifiersFor(pick.recipe) : [];
+        q(".pos-mods-h").hidden = mods.length === 0;
+        q(".pos-mods").innerHTML = mods.map((m) => chip(`${MODIFIERS[m].label}${MODIFIERS[m].priceDeltaCents ? ` +${formatCents(MODIFIERS[m].priceDeltaCents)}` : ""}`, pick.mods.has(m), `data-mod="${m}"`)).join("");
+        const extras: string[] = [];
+        if (TILL_HAS.drinks) extras.push(`<h3>Drink</h3><div>${chip("No drink", pick.drink === "", `data-drink=""`)}${DRINKS.map((d) => chip(`${d.label} · ${formatCents(d.priceCents)}`, pick.drink === d.id, `data-drink="${d.id}"`)).join("")}</div>`);
+        if (TILL_HAS.fries) extras.push(`<h3>Side</h3><div>${chip("No fries", pick.side === "", `data-side=""`)}${chip(`Fries · ${formatCents(300)}`, pick.side === "fries", `data-side="fries"`)}</div>`);
+        q(".pos-extras").innerHTML = extras.join("");
+        const lines: string[] = [];
+        if (pick.recipe) lines.push(esc(RECIPES[pick.recipe].label));
+        for (const m of pick.mods) lines.push(`<em>${esc(MODIFIERS[m].label)}</em>`);
+        if (pick.side) lines.push(`<em class="extra">+ Fries</em>`);
+        if (pick.drink) lines.push(`<em class="extra">+ ${esc(DRINKS.find((d) => d.id === pick.drink)?.label ?? pick.drink)}</em>`);
+        q(".pos-ticket ul").innerHTML = lines.length ? lines.map((l) => `<li>${l}</li>`).join("") : `<li class="fine">Tap what they asked for</li>`;
+        q(".pos-total").textContent = pick.recipe ? `Total ${formatCents(total())}` : "";
+      }
+      q<HTMLButtonElement>("#send").disabled = !pick.recipe || !pick.customer;
+    };
+    s.addEventListener("click", (e) => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>("[data-recipe],[data-mod],[data-drink],[data-side],[data-cust]");
+      if (!t) return;
+      msg.textContent = "";
+      msg.classList.remove("bad");
+      if (t.dataset.cust) pick.customer = t.dataset.cust;
+      if (t.dataset.recipe) {
+        pick.recipe = t.dataset.recipe as RecipeId;
+        pick.mods = new Set([...pick.mods].filter((m) => modifiersFor(pick.recipe as RecipeId).includes(m)));
+      }
+      if (t.dataset.mod) {
+        const m = t.dataset.mod as ModifierId;
+        if (pick.mods.has(m)) pick.mods.delete(m);
+        else pick.mods.add(m);
+      }
+      if (t.dataset.drink !== undefined) pick.drink = t.dataset.drink;
+      if (t.dataset.side !== undefined) pick.side = t.dataset.side;
+      menuKey = "";
+      paint();
+    });
+    q("#clear").addEventListener("click", () => {
+      pick.recipe = "";
+      pick.mods.clear();
+      pick.drink = "";
+      pick.side = "";
+      msg.textContent = "";
+      menuKey = "";
+      paint();
+    });
+    q<HTMLButtonElement>("#send").addEventListener("click", () => {
+      if (!pick.recipe || !pick.customer) return;
+      const btn = q<HTMLButtonElement>("#send");
+      btn.disabled = true;
+      void ring(pick.customer, { recipe: pick.recipe, modifiers: [...pick.mods], drink: pick.drink, side: pick.side }).then((r) => {
+        msg.classList.toggle("bad", !r.ok);
+        if (r.ok) {
+          msg.textContent = "Sent to the kitchen.";
+          pick.recipe = "";
+          pick.mods.clear();
+          pick.drink = "";
+          pick.side = "";
+          menuKey = "";
+        } else {
+          msg.textContent = r.reason ?? "That didn't go through";
+        }
+        paint();
+      });
+    });
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    q("#close").addEventListener("click", onClose);
+    this.show(s);
+    paint();
+    const timer = setInterval(paint, 400);
+    window.addEventListener("keydown", onKey);
+    this.cleanup = () => {
+      clearInterval(timer);
+      window.removeEventListener("keydown", onKey);
+    };
   }
 
   /**
@@ -496,15 +638,15 @@ export class Ui {
     }
   }
 
-  setTickets(visible: boolean, orders: { number: number; customer?: string; label: string; mods: string[]; wait: number; hint?: string }[]): void {
+  setTickets(visible: boolean, orders: { number: number; customer?: string; label: string; mods: string[]; extras?: string[]; wait: number; hint?: string }[]): void {
     this.tickets.hidden = !visible || orders.length === 0;
-    const key = orders.map((o) => `${o.number}:${Math.floor(o.wait / 5)}:${o.hint ?? ""}`).join("|");
+    const key = orders.map((o) => `${o.number}:${Math.floor(o.wait / 5)}:${o.hint ?? ""}:${(o.extras ?? []).join("+")}`).join("|");
     if (key === this.lastTicketsKey) return;
     this.lastTicketsKey = key;
     this.tickets.innerHTML = orders
       .map(
         (o) =>
-          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}${o.customer ? ` <span class="who">${esc(o.customer)}</span>` : ""}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
+          `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}${o.customer ? ` <span class="who">${esc(o.customer)}</span>` : ""}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${(o.extras ?? []).map((m) => `<em class="extra">+ ${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
       )
       .join("");
   }

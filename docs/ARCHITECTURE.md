@@ -75,6 +75,17 @@ their rate of change.
 - Cooking values are quantised to bytes before replication, so patches are sent only when the
   visible state changes. Food appearance on clients is a function of those values only.
 
+## Taking orders at the register
+
+A walk-in customer who reaches the counter is in the `ordering` phase: their spoken order
+(`CustomerState.say`) is replicated, but no ticket exists. The cashier opens the register, rings up
+the burger, its changes, the drink and the side, and sends it (`ring`). The server compares it with
+what the customer actually wants (`compareOrders`, shared in `packages/simulation/src/pos.ts`):
+a match creates the ticket and moves the customer on to `waiting`; anything else is sent back with
+what is wrong, and the customer stays. In normal mode a customer nobody takes within
+`SHIFT.orderPatienceSeconds` leaves; at closing time anyone still at the counter is turned away.
+The wanted order never leaves the server.
+
 ## Supplies and money
 
 The restaurant's balance moves only through the store: a sale credits it, and an order at the

@@ -263,9 +263,8 @@ describe("shared interactions", () => {
     at(a, trayPos.x, 1.3, 0, 0.7);
     expect(await send(a, "place", { point: trayPos, onto: tray })).toMatchObject({ ok: true });
 
-    // Random tickets may carry modifiers; add a plain one so the served burger has an exact match
-    // (the server pays against the best-scoring open ticket).
-    await until(() => [...room.state.orders.values()].some((o) => o.status === "open"), 2000, "open order");
+    // A plain ticket, so the served burger has an exact match (the server pays against the
+    // best-scoring open ticket).
     k.createOrder("classic_cheeseburger", []);
 
     // Serve at the pickup shelf.

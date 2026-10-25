@@ -484,6 +484,23 @@ def service_counter(s, gfx) -> None:
     scr.rotation_euler.x = math.radians(-20)
     s.add("dining", scr)
     s.add("dining", aabb("pos_reader", rx1 - 0.02, ry0, rz0 - 0.02, rx1 + 0.08, ry0 + 0.04, rz0 + 0.12, m["black_metal"], bevel=0.01, cull_bottom=False))
+    # What makes it a till rather than a slab: a lit touchscreen on the existing slab, a receipt
+    # printer with paper, a service bell, and the cash drawer in the counter's kitchen face. All
+    # unbaked, so the baked counter and its lightmap stay exactly as they are.
+    n = (0.0, 0.342, 0.94)
+    face = image_plane("pos_display", (rc[0] + n[0] * 0.0135, ry0 + 0.21 + n[1] * 0.0135, rc[2] + n[2] * 0.0135), 0.32, 0.2, n, image_material("pos_display", gfx["pos_screen"], rough=0.12, emission=1.5), up=(0.0, 0.94, -0.342))
+    s.add("unbaked", face)
+    s.add("unbaked", aabb("pos_printer", rx0 - 0.3, ry0, rz0 + 0.08, rx0 - 0.1, ry0 + 0.09, rz0 + 0.3, m["black_metal"], bevel=0.01, cull_bottom=False))
+    s.add("unbaked", aabb("pos_printer_slot", rx0 - 0.27, ry0 + 0.09, rz0 + 0.17, rx0 - 0.13, ry0 + 0.095, rz0 + 0.185, bl.solid("slot_dark", (0.02, 0.02, 0.02), 0.9), cull_bottom=False))
+    paper = bl.solid("receipt_paper", (0.97, 0.96, 0.93), 0.85)
+    s.add("unbaked", aabb("pos_receipt", rx0 - 0.265, ry0 + 0.09, rz0 + 0.175, rx0 - 0.135, ry0 + 0.21, rz0 + 0.1775, paper, cull_bottom=False))
+    s.add("unbaked", bl.lathe("service_bell", [(0.0, 0.0), (0.045, 0.0), (0.047, 0.008), (0.04, 0.02), (0.02, 0.04), (0.006, 0.05), (0.0, 0.052)], (rx0 - 0.55, ry0, 0.02), m["chrome"], segments=28))
+    s.add("unbaked", bl.cylinder("service_bell_button", (rx0 - 0.55, ry0 + 0.056, 0.02), 0.007, 0.012, m["chrome"], segments=12))
+    # Cash drawer in the counter's kitchen face, under the till.
+    dz = 0.35
+    s.add("unbaked", aabb("cash_drawer", rx0 - 0.1, 0.78, dz, rx1 + 0.1, 0.93, dz + 0.014, m["steel"], bevel=0.005))
+    s.add("unbaked", aabb("cash_drawer_slot", rx0 + 0.03, 0.855, dz + 0.014, rx1 - 0.03, 0.865, dz + 0.02, m["black_metal"], bevel=0.002, cull_bottom=False))
+    s.add("unbaked", bl.cylinder("cash_drawer_lock", ((rx0 + rx1) / 2 + 0.17, 0.885, dz + 0.017), 0.009, 0.005, m["chrome"], axis="z", segments=16))
     # Napkin dispenser and a tip jar on the dining side of the counter.
     s.add("dining", aabb("napkin_disp", -4.6, 1.0, -0.25, -4.45, 1.14, -0.13, m["chrome"], bevel=0.01, cull_bottom=False))
     s.add("dining", bl.lathe("tip_jar", [(0.0, 0.0), (0.055, 0.0), (0.06, 0.01), (0.06, 0.15), (0.052, 0.17), (0.052, 0.18), (0.0, 0.18)], (-2.9, 1.0, -0.2), bl.solid("jar_glass", (0.85, 0.9, 0.88), 0.05, alpha=0.35), segments=28))

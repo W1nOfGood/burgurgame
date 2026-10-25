@@ -117,6 +117,8 @@ export const OrderState = schema(
     customer: t.string().default(""),
     /** Drink served with the burger (DrinkId), or "". */
     drink: t.string().default(""),
+    /** Side served with the burger ("fries"), or "". */
+    side: t.string().default(""),
   },
   "OrderState",
 );
@@ -132,7 +134,7 @@ export const CustomerState = schema(
     seed: t.uint16().default(0),
     /** Index into COUNTER_SPOTS. */
     spot: t.uint8().default(0),
-    /** "arriving" | "waiting" | "collecting" | "leaving" */
+    /** "arriving" | "ordering" (at the counter, waiting to be rung up) | "waiting" | "collecting" | "leaving" */
     phase: t.string().default(""),
     /** Server tick at which the phase started. */
     phaseAt: t.uint32().default(0),
@@ -140,6 +142,8 @@ export const CustomerState = schema(
     order: t.string().default(""),
     /** Left without their food. */
     angry: t.boolean().default(false),
+    /** What they say at the counter while "ordering". */
+    say: t.string().default(""),
   },
   "CustomerState",
 );

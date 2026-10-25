@@ -177,6 +177,47 @@ def fountain_panel() -> str:
     return _save(im, "fountain_panel")
 
 
+def pos_screen() -> str:
+    """Touchscreen of the cash register: menu tiles, an open ticket, a green SEND key."""
+    W, H = 768, 512
+    im = Image.new("RGB", (W, H), (16, 20, 28))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, 0, W, 54], fill=(176, 28, 34))
+    d.text((18, 11), "AFTER HOURS", font=_font(BLACK, 30), fill=(255, 255, 255))
+    d.text((W - 190, 17), "REGISTER 1", font=_font(MONO, 20), fill=(255, 220, 210))
+    tiles = [("PLAIN JANE", "6.50"), ("CLASSIC", "7.50"), ("DOUBLE", "10.50"), ("BACON", "9.50"), ("BBQ", "10.00"), ("VEGGIE", "8.50"), ("SWISS", "9.00"), ("INFERNO", "9.50"), ("SPECIAL", "12.50")]
+    tw, th, gx, gy = 150, 100, 12, 12
+    for i, (name, price) in enumerate(tiles):
+        x0 = 16 + (i % 3) * (tw + gx)
+        y0 = 70 + (i // 3) * (th + gy)
+        hot = i == 1
+        d.rounded_rectangle([x0, y0, x0 + tw, y0 + th], radius=12, fill=(240, 176, 52) if hot else (38, 46, 62))
+        fg = (28, 20, 10) if hot else (232, 236, 244)
+        f = _font(BOLD, 20)
+        d.text((x0 + (tw - d.textlength(name, font=f)) / 2, y0 + 22), name, font=f, fill=fg)
+        f2 = _font(MONO, 22)
+        d.text((x0 + (tw - d.textlength(price, font=f2)) / 2, y0 + 58), price, font=f2, fill=fg if hot else (240, 176, 52))
+    for k, label in enumerate(("NO PICKLES", "EXTRA CHEESE", "ADD BACON", "COLA")):
+        x0 = 16 + (k % 4) * 116
+        d.rounded_rectangle([x0, 400, x0 + 108, 438], radius=9, fill=(52, 62, 82))
+        f = _font(SEMI, 14)
+        d.text((x0 + (108 - d.textlength(label, font=f)) / 2, 411), label, font=f, fill=(210, 218, 232))
+    px = 500
+    d.rounded_rectangle([px, 70, W - 14, 440], radius=12, fill=(250, 246, 236))
+    d.text((px + 16, 82), "TICKET  #12", font=_font(MONO, 20), fill=(60, 52, 46))
+    for i, (line, col) in enumerate((("Classic Cheeseburger", (40, 34, 30)), ("  extra sauce", (170, 40, 30)), ("  + Fizz Cola", (30, 90, 140)))):
+        d.text((px + 16, 124 + i * 30), line, font=_font(MONO, 17), fill=col)
+    d.line([px + 16, 330, W - 30, 330], fill=(190, 182, 170), width=2)
+    d.text((px + 16, 344), "TOTAL", font=_font(MONO, 20), fill=(60, 52, 46))
+    d.text((W - 150, 340), "$9.50", font=_font(BLACK, 30), fill=(30, 26, 22))
+    d.rounded_rectangle([px, 452, W - 14, 502], radius=12, fill=(44, 168, 96))
+    f = _font(BLACK, 26)
+    d.text((px + (W - 14 - px - d.textlength("SEND", font=f)) / 2, 462), "SEND", font=f, fill=(255, 255, 255))
+    d.rounded_rectangle([16, 452, 220, 502], radius=12, fill=(70, 78, 96))
+    d.text((52, 466), "CLEAR", font=_font(BOLD, 20), fill=(220, 226, 238))
+    return _save(im.filter(ImageFilter.GaussianBlur(0.5)), "pos_screen")
+
+
 def monitor_screen() -> str:
     """Office monitor: a dim ledger spreadsheet."""
     W, H = 640, 400
@@ -269,6 +310,7 @@ def build_all() -> dict[str, str]:
         "poster_anatomy": poster_anatomy(),
         "fountain_panel": fountain_panel(),
         "monitor_screen": monitor_screen(),
+        "pos_screen": pos_screen(),
         "box_buns": box_label("BUNS", "BRIOCHE · 48 CT", (150, 40, 30), "box_buns"),
         "box_cups": box_label("CUPS", "16 OZ COLD · 1000", (30, 70, 140), "box_cups"),
         "box_fries": box_label("FRIES", "SHOESTRING · 6 × 5 LB", (190, 120, 20), "box_fries"),

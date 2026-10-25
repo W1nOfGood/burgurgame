@@ -200,6 +200,9 @@ export const NO_PLACE_RECTS: readonly (Rect & { y: number })[] = [
 
 export const SHIFT_SWITCH: Vec3 = [2.62, 0.9, 0.37];
 
+/** The cash register: aim here to take a customer's order. */
+export const REGISTER: Vec3 = [-3.5, 1.27, 0.08];
+
 /** The office monitor: aim here to order supplies. */
 export const OFFICE_COMPUTER: Vec3 = [4.95, 1.08, 4.62];
 
