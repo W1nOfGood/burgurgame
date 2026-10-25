@@ -1154,6 +1154,11 @@ export class Kitchen {
    * to an open burger that happens to sit on the shelf does not serve it.
    */
   private checkPickup(root: ItemRt, by: string): void {
+    // A full cup set on the shelf completes the tray beside it.
+    if (root.kind === "cup") {
+      for (const t of this.items.values()) if (t.kind === "tray" && t.child && !t.holder && !t.locked) this.checkPickup(t, by);
+      return;
+    }
     const r = this.rootOf(root);
     if (r.kind !== "tray" || r.holder || r.locked || !r.child) return;
     if (!inPickupZone({ x: r.pos.x, y: r.pos.y - restingHeight("tray"), z: r.pos.z })) return;
@@ -1425,7 +1430,7 @@ export class Kitchen {
       if (it.pos.y < 0.12) {
         for (const layer of this.stackFrom(it)) if (layer.food && !layer.food.dirty) layer.food.dirty = true;
       }
-      if (it.kind === "tray" && it.body.isSleeping() && it.child && !it.locked) this.checkPickup(it, "");
+      if ((it.kind === "tray" || it.kind === "cup") && it.body.isSleeping() && !it.holder && !it.locked && (it.kind === "cup" || it.child)) this.checkPickup(it, "");
     }
 
     // Stacks follow their roots.

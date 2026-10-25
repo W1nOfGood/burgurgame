@@ -551,6 +551,15 @@ export class RestaurantView {
         this.standIns.push(merged);
         continue;
       }
+      if (d.kind === "cup") {
+        // A sleeve of paper cups beside the fountain.
+        const sleeve = MeshBuilder.CreateCylinder(`cups_${d.id}`, { diameterTop: 0.092, diameterBottom: 0.07, height: d.half[1] * 2, tessellation: 16 }, this.scene);
+        sleeve.position.set(d.center[0], d.center[1], d.center[2]);
+        sleeve.material = m.solid("cup_paper", [0.95, 0.94, 0.91], 0.55);
+        setPick(sleeve, { type: "dispenser", id: d.id, kind: "cup" });
+        this.standIns.push(sleeve);
+        continue;
+      }
       // Ingredient bins: a textured fill of the actual ingredient inside a hollow steel rim.
       const bin = MeshBuilder.CreateBox(`bin_${d.id}`, { width: d.half[0] * 2 - 0.02, height: 0.012, depth: d.half[2] * 2 - 0.02 }, this.scene);
       bin.position.set(d.center[0], d.center[1] + 0.012, d.center[2]);

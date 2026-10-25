@@ -725,6 +725,7 @@ export class Game {
         source = fresh ? "buffer" : "late";
       }
       this.presentItem(id, view, source, dt);
+      if (it.kind === "cup") view.tickCup(now);
     }
     for (const [rootId, layers] of stacks) {
       const rootView = this.items.get(rootId);

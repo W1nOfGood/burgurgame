@@ -1,11 +1,11 @@
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import type { Scene } from "@babylonjs/core/scene";
-import { ITEMS, isPatty, saucesInMask, type ItemKind, type SauceKind } from "@ahb/data";
+import { ITEMS, SODA_FOUNTAIN, drinkOfCode, isPatty, saucesInMask, type ItemKind, type SauceKind } from "@ahb/data";
 import { pattyDoneness, type FoodState } from "@ahb/simulation";
 import { bottleLabel, foodTexture } from "./foodTextures.js";
 import type { CookUniforms, FoodLibrary, FoodVisual } from "./food.js";
@@ -149,6 +149,7 @@ export interface ItemSnapshotLike {
   down: number;
   flip: number;
   level: number;
+  drink: number;
   offered: boolean;
   holder: string;
 }
@@ -181,6 +182,11 @@ export class ItemView {
   /** Per-item material clones (cooking state, sauce colour); released on dispose/upgrade. */
   private owned: Material[] = [];
   private appearanceKey = "";
+  /** Cups: the drink inside, and the stream from the valve while it fills. */
+  private liquid: Mesh | null = null;
+  private pour: Mesh | null = null;
+  private lastLevel = 0;
+  private lastRiseAt = 0;
   food: FoodState | null = null;
 
   constructor(scene: Scene, lib: MaterialLibrary, id: string, kind: ItemKind) {
@@ -193,6 +199,58 @@ export class ItemView {
     this.root.metadata = { placeholder: false };
     setPick(this.root, { type: "item", id });
     this.body = this.makeBody();
+    if (kind === "cup") this.buildCupExtras();
+  }
+
+  /** The drink in a cup (a column that rises with the fill) and the pour from the valve. */
+  private buildCupExtras(): void {
+    const s = this.scene;
+    const h = 0.125;
+    const liquid = MeshBuilder.CreateCylinder(`it_${this.id}_drink`, { diameterTop: 0.084, diameterBottom: 0.06, height: h, tessellation: 20 }, s);
+    liquid.bakeTransformIntoVertices(Matrix.Translation(0, h / 2, 0));
+    liquid.parent = this.root;
+    liquid.position.y = -0.075 + 0.012;
+    liquid.isPickable = false;
+    liquid.isVisible = false;
+    this.liquid = liquid;
+    const pour = MeshBuilder.CreateCylinder(`it_${this.id}_pour`, { diameter: 0.009, height: 1, tessellation: 8 }, s);
+    pour.bakeTransformIntoVertices(Matrix.Translation(0, -0.5, 0));
+    pour.parent = this.root;
+    pour.isPickable = false;
+    pour.isVisible = false;
+    this.pour = pour;
+  }
+
+  /** Per frame for cups: the pour shows while the level is still rising. */
+  tickCup(nowMs: number): void {
+    if (!this.pour || !this.liquid) return;
+    const pouring = nowMs - this.lastRiseAt < 350 && this.lastLevel < 0.995;
+    this.pour.isVisible = pouring;
+    if (pouring) {
+      // From the nozzle (just above the rim) down to the surface of the drink.
+      const top = SODA_FOUNTAIN.nozzleY - (this.root.position.y + 0.075 - 0.003) + 0.075;
+      const surface = this.liquid.position.y + 0.125 * this.liquid.scaling.y;
+      this.pour.position.y = Math.max(top, surface + 0.02);
+      this.pour.scaling.y = Math.max(0.01, this.pour.position.y - surface);
+    }
+  }
+
+  private updateCup(meta: ItemSnapshotLike): void {
+    if (!this.liquid || !this.pour) return;
+    const level = meta.level / 255;
+    const drink = drinkOfCode(meta.drink);
+    if (level > this.lastLevel + 0.002) this.lastRiseAt = performance.now();
+    this.lastLevel = level;
+    const visible = !!drink && level > 0.01;
+    this.liquid.isVisible = visible;
+    if (!drink) return;
+    this.liquid.scaling.y = Math.max(0.01, level);
+    const key = `drink_${drink.id}`;
+    const mat = this.lib.solid(key, [...drink.color], 0.12);
+    if (this.liquid.material !== mat) {
+      this.liquid.material = mat;
+      this.pour.material = mat;
+    }
   }
 
   /** True when this view shows the authored model rather than the procedural stand-in. */
@@ -448,6 +506,15 @@ export class ItemView {
         this.uniformTargets.push({ mesh: yolk, base: [1, 0.6, 0.06], cooked: [0.98, 0.72, 0.25], crisp: [0.85, 0.62, 0.3] });
         return white;
       }
+      case "cup": {
+        const cup = MeshBuilder.CreateCylinder(n, { diameterTop: 0.092, diameterBottom: 0.066, height: 0.15, tessellation: 20 }, s);
+        cup.material = lib.solid("cup_paper", [0.95, 0.94, 0.91], 0.55);
+        const band = MeshBuilder.CreateCylinder(`${n}_band`, { diameterTop: 0.0925, diameterBottom: 0.0775, height: 0.07, tessellation: 20 }, s);
+        band.position.y = -0.003;
+        band.material = lib.solid("cup_band", [0.72, 0.11, 0.12], 0.5);
+        band.parent = cup;
+        return cup;
+      }
       case "tray": {
         const base = MeshBuilder.CreateBox(n, { width: 0.4, height: 0.012, depth: 0.3 }, s);
         base.position.y = -0.004;
@@ -533,9 +600,10 @@ export class ItemView {
     this.food = food;
     const key = food
       ? `${food.cookA.toFixed(2)}|${food.cookB.toFixed(2)}|${food.inner.toFixed(2)}|${food.burn.toFixed(2)}|${food.melt.toFixed(2)}|${food.toast.toFixed(2)}|${food.sauce.toFixed(2)}|${food.sauceMask}|${food.down}|${meta.flip > 127 ? 1 : 0}|${food.dirty}`
-      : `${meta.level}`;
+      : `${meta.level}|${meta.drink}`;
     if (key === this.appearanceKey) return;
     this.appearanceKey = key;
+    if (this.kind === "cup") this.updateCup(meta);
     if (!food) return;
 
     if (this.authored) {

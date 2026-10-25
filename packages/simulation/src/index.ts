@@ -9,3 +9,4 @@ export * from "./fixedStep.js";
 export * from "./rng.js";
 export * from "./customers.js";
 export * from "./pos.js";
+export * from "./tutorial.js";
