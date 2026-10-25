@@ -76,11 +76,8 @@ export function valveAt(x: number, y: number, z: number): number {
   return best;
 }
 
-/**
- * Drinks are switched off until the client shows cups, pours and drink tickets: with this false
- * no ticket asks for a drink and the cup stacks hand out nothing.
- */
-export const DRINKS_ENABLED = false;
+/** Switch for the whole drinks feature: with this false no ticket asks for a drink and the cup stacks are not there. */
+export const DRINKS_ENABLED = true;
 
 /** Chance a walk-in customer also orders a drink. */
 export const DRINK_CHANCE = DRINKS_ENABLED ? 0.5 : 0;

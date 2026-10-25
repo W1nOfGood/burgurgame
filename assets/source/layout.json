@@ -382,6 +382,53 @@
    "surface": "counter"
   },
   {
+   "id": "fryer_vat_0",
+   "center": [
+    1.31,
+    0.9,
+    4.550000000000001
+   ],
+   "half": [
+    0.17000000000000004,
+    0.005,
+    0.22999999999999998
+   ],
+   "material": "stainless",
+   "collide": false,
+   "surface": "fryer"
+  },
+  {
+   "id": "fryer_vat_1",
+   "center": [
+    1.69,
+    0.9,
+    4.550000000000001
+   ],
+   "half": [
+    0.17000000000000004,
+    0.005,
+    0.22999999999999998
+   ],
+   "material": "stainless",
+   "collide": false,
+   "surface": "fryer"
+  },
+  {
+   "id": "office_screen",
+   "center": [
+    4.95,
+    1.08,
+    4.62
+   ],
+   "half": [
+    0.29,
+    0.19,
+    0.03
+   ],
+   "material": "dark_metal",
+   "collide": false
+  },
+  {
    "id": "assembly_island",
    "center": [
     -0.5,
@@ -441,6 +488,22 @@
    ],
    "material": "stainless",
    "collide": true
+  },
+  {
+   "id": "drink_station",
+   "center": [
+    5,
+    1.015,
+    1.235
+   ],
+   "half": [
+    0.88,
+    0.015,
+    0.115
+   ],
+   "material": "stainless",
+   "collide": true,
+   "surface": "counter"
   },
   {
    "id": "table_1",
@@ -746,6 +809,48 @@
     0.22,
     0.05,
     0.17
+   ]
+  },
+  {
+   "id": "box_fries",
+   "kind": "fries",
+   "center": [
+    3.75,
+    0.31,
+    4.5
+   ],
+   "half": [
+    0.25,
+    0.15,
+    0.05
+   ]
+  },
+  {
+   "id": "cups_west",
+   "kind": "cup",
+   "center": [
+    4.18,
+    1.21,
+    1.15
+   ],
+   "half": [
+    0.06,
+    0.21,
+    0.06
+   ]
+  },
+  {
+   "id": "cups_east",
+   "kind": "cup",
+   "center": [
+    5.82,
+    1.21,
+    1.15
+   ],
+   "half": [
+    0.06,
+    0.21,
+    0.06
    ]
   }
  ],
@@ -1102,6 +1207,38 @@
     "egg",
     "jalapeno"
    ]
+  },
+  "fries": {
+   "kind": "fries",
+   "label": "Fries",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.055,
+    "halfHeight": 0.04
+   },
+   "layerHeight": 0.08,
+   "mass": 0.15,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 40,
+   "accepts": []
+  },
+  "cup": {
+   "kind": "cup",
+   "label": "Cup",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.045,
+    "halfHeight": 0.075
+   },
+   "layerHeight": 0.15,
+   "mass": 0.4,
+   "food": false,
+   "tool": false,
+   "grip": "bottle",
+   "costCents": 25,
+   "accepts": []
   },
   "tray": {
    "kind": "tray",

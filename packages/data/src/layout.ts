@@ -1,5 +1,6 @@
 import type { ItemKind } from "./items.js";
 import { DRINKS_ENABLED } from "./drinks.js";
+import { FRIES_ENABLED, FRYER } from "./fryer.js";
 
 /**
  * Restaurant layout in metres. +Y is up, the kitchen is toward +Z, the dining room and street
@@ -26,7 +27,7 @@ export type MaterialId =
   | "red_vinyl"
   | "street";
 
-export type SurfaceKind = "counter" | "grill" | "pickup" | "floor";
+export type SurfaceKind = "counter" | "grill" | "pickup" | "floor" | "fryer";
 
 export interface LayoutBox {
   id: string;
@@ -107,6 +108,17 @@ export const BOXES: readonly LayoutBox[] = [
   { id: "walk_in", center: [-5.4, 1.0, 4.5], half: [0.55, 1.0, 0.45], material: "fridge_white", collide: true },
   { id: "dry_storage", center: [3.6, 0.9, 4.75], half: [0.9, 0.9, 0.2], material: "dark_metal", collide: true },
   { id: "office_desk", center: [5.1, 0.38, 4.4], half: [0.8, 0.38, 0.5], material: "timber", collide: true, surface: "counter" },
+  // The two oil vats: a portion set here cooks (the fryer's own box is the collision).
+  ...FRYER.vats.map((v, i) => ({
+    id: `fryer_vat_${i}`,
+    center: [(v.minX + v.maxX) / 2, FRYER.deckY, (v.minZ + v.maxZ) / 2] as Vec3,
+    half: [(v.maxX - v.minX) / 2, 0.005, (v.maxZ - v.minZ) / 2] as Vec3,
+    material: "stainless" as MaterialId,
+    collide: false,
+    surface: "fryer" as SurfaceKind,
+  })),
+  // The monitor on the desk (pick target only: nothing collides with it).
+  { id: "office_screen", center: [4.95, 1.08, 4.62], half: [0.29, 0.19, 0.03], material: "dark_metal", collide: false },
 
   // Assembly island, sink, trash, drinks
   { id: "assembly_island", center: [-0.5, 0.46, 2.2], half: [1.7, 0.46, 0.4], material: "stainless", collide: true, surface: "counter" },
@@ -181,6 +193,8 @@ export const DISPENSERS: readonly Dispenser[] = [
   { id: "drawer_patty", kind: "patty", center: [-1.8, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
   { id: "drawer_veggie", kind: "veggie_patty", center: [-1.4, 0.66, 3.95], half: [0.18, 0.06, 0.24], requiresDrawer: 0.55 },
   { id: "tray_stack", kind: "tray", center: [-1.95, 0.95, 2.2], half: [0.22, 0.05, 0.17] },
+  // Frozen fries: the printed case on the dry-storage shelf (aim at its face).
+  ...(FRIES_ENABLED ? ([{ id: "box_fries", kind: "fries", center: [3.75, 0.31, 4.5], half: [0.25, 0.15, 0.05] }] as const) : []),
   // Cup stacks either side of the fountain (sleeves on the cabinet top).
   ...(DRINKS_ENABLED
     ? ([
@@ -197,6 +211,12 @@ export const NO_PLACE_RECTS: readonly (Rect & { y: number })[] = [
 ];
 
 export const SHIFT_SWITCH: Vec3 = [2.62, 0.9, 0.37];
+
+/** The cash register: aim here to take a customer's order. */
+export const REGISTER: Vec3 = [-3.5, 1.27, 0.08];
+
+/** The office monitor: aim here to order supplies. */
+export const OFFICE_COMPUTER: Vec3 = [4.95, 1.08, 4.62];
 
 export interface InitialItem {
   kind: ItemKind;

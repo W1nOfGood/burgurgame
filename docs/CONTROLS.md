@@ -16,6 +16,8 @@ the game switches to cursor mode: aim with the cursor and hold the right mouse b
 | Rotate held item | Hold right mouse and move |
 | Hold closer / farther | Mouse wheel |
 | Contextual use: flip with spatula, hand an item to a teammate, flip the OPEN sign | E |
+| Take a customer's order (aim at the cash register), order supplies (aim at the office monitor) | E or click |
+| Network overlay: ping, server tick rate, corrections | F3 |
 | Set down safely | Q |
 | Inspect (doneness, temperature, sauces) | Hold F |
 | Recipe book | R |
@@ -53,3 +55,11 @@ needed.
 
 *Settings → Touch* changes control size and swaps the stick to the right side. Rotation and
 resizing keep the session; backgrounding clears held input and reconnects on return.
+
+## The tutorial
+
+A new restaurant starts with a short tutorial: one Starter Burger (bun, patty, bun) and a Fizz
+Cola for the first customer, nobody else until it is served. A card at the top says what to do
+next and a yellow marker points at it. It follows what is actually in the kitchen, so doing things
+in a different order is fine. **Skip tutorial** is on the card and in the menu; the menu offers
+**Play the tutorial** again whenever the restaurant is closed.

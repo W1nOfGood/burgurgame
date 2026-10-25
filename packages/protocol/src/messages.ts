@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { INTERACTION, NET } from "@ahb/data";
+import { DRINK_IDS, INTERACTION, MAX_PACKS_PER_ORDER, MODIFIERS, NET, RECIPE_IDS, STOCK_KEYS, type ModifierId, type RecipeId, type StockKey } from "@ahb/data";
 
 /**
  * Client → server intents. TypeScript types do not validate untrusted network input, so every
  * message is checked with these runtime schemas at the server boundary (spec §3, §14).
  */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
 export const MSG = {
   input: "input",
@@ -23,6 +23,8 @@ export const MSG = {
   ping: "ping",
   away: "away",
   tutorial: "tutorial",
+  buy: "buy",
+  ring: "ring",
 } as const;
 
 export const SERVER_MSG = {
@@ -98,6 +100,22 @@ export const squeezeSchema = z.object({ target: id, intensity: finite(0, 1) });
 export const shiftSchema = z.object({ cmd, action: z.enum(["open", "close"]) });
 
 export const pauseSchema = z.object({ cmd, action: z.enum(["request", "resume", "cancel"]) });
+
+export const buySchema = z.object({
+  cmd,
+  stock: z.enum(STOCK_KEYS as unknown as [StockKey, ...StockKey[]]),
+  packs: z.number().int().min(1).max(MAX_PACKS_PER_ORDER),
+});
+
+/** What the cashier rang up for a customer at the counter. */
+export const ringSchema = z.object({
+  cmd,
+  customer: id,
+  recipe: z.enum(RECIPE_IDS as unknown as [RecipeId, ...RecipeId[]]),
+  modifiers: z.array(z.enum(Object.keys(MODIFIERS) as [ModifierId, ...ModifierId[]])).max(4),
+  drink: z.enum(["", ...DRINK_IDS] as [string, ...string[]]),
+  side: z.enum(["", "fries"]),
+});
 
 export const tutorialSchema = z.object({ cmd, action: z.enum(["start", "skip"]) });
 

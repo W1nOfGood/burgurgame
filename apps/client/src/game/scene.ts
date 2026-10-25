@@ -29,6 +29,7 @@ import {
   MODIFIERS,
   SHIFT_SWITCH,
   TRASH_ZONE,
+  drinkById,
   formatCents,
   type ItemKind,
   type ModifierId,
@@ -53,6 +54,8 @@ export type PickInfo =
   | { type: "drawer" }
   | { type: "dispenser"; id: string; kind: ItemKind }
   | { type: "switch" }
+  | { type: "computer" }
+  | { type: "register" }
   | { type: "trash" }
   | { type: "player"; id: string }
   | { type: "static" };
@@ -218,7 +221,17 @@ export class RestaurantView {
     // the prediction world; these only answer "what did the player aim at").
     const groups = new Map<string, { meshes: Mesh[]; pick: PickInfo | null }>();
     for (const box of BOXES) {
-      const pick: PickInfo | null = box.surface ? { type: "surface", kind: box.surface } : box.id === "trash" ? { type: "trash" } : box.collide ? { type: "static" } : null;
+      const pick: PickInfo | null = box.surface
+        ? { type: "surface", kind: box.surface }
+        : box.id === "trash"
+          ? { type: "trash" }
+          : box.id === "office_screen"
+            ? { type: "computer" }
+            : box.id === "register"
+              ? { type: "register" }
+              : box.collide
+              ? { type: "static" }
+              : null;
       if (!pick) continue;
       const mesh = MeshBuilder.CreateBox(`proxy_${box.id}`, { width: box.half[0] * 2, height: box.half[1] * 2, depth: box.half[2] * 2 }, scene);
       mesh.position.set(box.center[0], box.center[1], box.center[2]);
@@ -536,6 +549,24 @@ export class RestaurantView {
         const merged = mergeGroup("tray_stack", stack, { type: "dispenser", id: d.id, kind: "tray" })!;
         merged.material = m.solid("tray_red", [0.66, 0.07, 0.05], 0.38);
         this.standIns.push(merged);
+        continue;
+      }
+      if (d.kind === "fries") {
+        // The printed case of frozen fries: a slab flush with the shelf front to aim at.
+        const slab = MeshBuilder.CreateBox(`case_${d.id}`, { width: d.half[0] * 2, height: d.half[1] * 2, depth: d.half[2] * 2 }, this.scene);
+        slab.position.set(d.center[0], d.center[1], d.center[2]);
+        slab.material = m.solid("fries_case", [0.72, 0.52, 0.28], 0.8);
+        setPick(slab, { type: "dispenser", id: d.id, kind: "fries" });
+        this.standIns.push(slab);
+        continue;
+      }
+      if (d.kind === "cup") {
+        // A sleeve of paper cups beside the fountain.
+        const sleeve = MeshBuilder.CreateCylinder(`cups_${d.id}`, { diameterTop: 0.092, diameterBottom: 0.07, height: d.half[1] * 2, tessellation: 16 }, this.scene);
+        sleeve.position.set(d.center[0], d.center[1], d.center[2]);
+        sleeve.material = m.solid("cup_paper", [0.95, 0.94, 0.91], 0.55);
+        setPick(sleeve, { type: "dispenser", id: d.id, kind: "cup" });
+        this.standIns.push(sleeve);
         continue;
       }
       // Ingredient bins: a textured fill of the actual ingredient inside a hollow steel rim.
@@ -894,11 +925,20 @@ export class RestaurantView {
 
     this.ticketTimer -= dt;
     const orders = [...state.orders.values()].filter((o) => o.status === "open").sort((a, b) => a.number - b.number);
-    const key = orders.map((o) => `${o.number}:${o.modifiers.join("+")}`).join("|");
+    const key = orders.map((o) => `${o.number}:${o.modifiers.join("+")}:${o.side}:${o.drink}`).join("|");
     if (key !== this.ticketKey || this.ticketTimer <= 0) {
       this.ticketKey = key;
       this.ticketTimer = 1;
-      this.drawTickets(orders.map((o) => ({ number: o.number, customer: o.customer, recipe: o.recipe as RecipeId, modifiers: [...o.modifiers] as ModifierId[], wait: state.shiftTime - o.createdAt })));
+      this.drawTickets(
+        orders.map((o) => ({
+          number: o.number,
+          customer: o.customer,
+          recipe: o.recipe as RecipeId,
+          modifiers: [...o.modifiers] as ModifierId[],
+          extras: [...(o.side ? ["fries"] : []), ...(o.drink ? [drinkById(o.drink)?.label ?? o.drink] : [])],
+          wait: state.shiftTime - o.createdAt,
+        })),
+      );
     }
     const boardKey = `${state.name}|${state.balance}`;
     if (boardKey !== this.boardKey) {
@@ -907,7 +947,7 @@ export class RestaurantView {
     }
   }
 
-  private drawTickets(orders: { number: number; customer: string; recipe: RecipeId; modifiers: ModifierId[]; wait: number }[]): void {
+  private drawTickets(orders: { number: number; customer: string; recipe: RecipeId; modifiers: ModifierId[]; extras: string[]; wait: number }[]): void {
     const ctx = this.ticketTex.getContext() as unknown as CanvasRenderingContext2D;
     const w = 1024;
     const h = 134;
@@ -929,6 +969,8 @@ export class RestaurantView {
       ctx.fillText(RECIPES[o.recipe].label.replace("Cheeseburger", "Cheese").slice(0, 14), x + 8, 79);
       ctx.fillStyle = "#a93226";
       o.modifiers.forEach((mod, j) => ctx.fillText(MODIFIERS[mod].label.toUpperCase().slice(0, 14), x + 8, 101 + j * 20));
+      ctx.fillStyle = "#1f5f8b";
+      o.extras.forEach((ex, j) => ctx.fillText(`+ ${ex.toUpperCase()}`.slice(0, 14), x + 8, 101 + (o.modifiers.length + j) * 20));
       ctx.fillStyle = "#6e6259";
       ctx.font = "16px ui-monospace, monospace";
       ctx.fillText(`${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}`, x + 106, 38);

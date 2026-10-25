@@ -6,7 +6,7 @@ import { COUNTER_FACING_YAW, COUNTER_SPOTS, CUSTOMER, CUSTOMER_PATH, NET, PICKUP
  * poses from them, so walking customers cost no per-tick network traffic.
  */
 
-export type CustomerPhase = "arriving" | "waiting" | "collecting" | "leaving";
+export type CustomerPhase = "arriving" | "ordering" | "waiting" | "collecting" | "leaving";
 
 export interface CustomerTimeline {
   phase: CustomerPhase;

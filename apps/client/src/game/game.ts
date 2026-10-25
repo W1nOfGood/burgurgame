@@ -26,6 +26,7 @@ import {
   NET,
   PLAYER,
   RECIPES,
+  drinkById,
   isPatty,
   isSauceBottle,
   type ItemKind,
@@ -45,9 +46,12 @@ import {
   sizzleLevel,
   stackOffsets,
   surfaceAt,
+  TUTORIAL_STEP_COUNT,
+  tutorialStep,
   wrapAngle,
   type CustomerPhase,
   type Rapier,
+  type TutorialStep,
 } from "@ahb/simulation";
 import { MSG, PING_TEXT, readFoodBytes, type ItemState, type PingPreset, type ResultMessage } from "@ahb/protocol";
 import type { Session } from "../net/session.js";
@@ -71,6 +75,8 @@ export interface GameHooks {
   openMenu(): void;
   openPing(): void;
   openRecipes(): void;
+  openSupplies(): void;
+  openRegister(): void;
   leave(reason: string, code: number): void;
 }
 
@@ -174,6 +180,9 @@ export class Game {
     maxDelayMs: NET.maxInterpolationDelayMs,
   });
   private readonly stepper = new FixedStepper(NET.tickHz, NET.maxCatchUpSteps);
+  private coachStep: TutorialStep | null = null;
+  private coachAt = 0;
+  private beacon: Mesh | null = null;
   private readonly net = new NetStats((cb) => this.session.room.ping(cb));
   private yaw = 0;
   private pitch = 0.15;
@@ -687,7 +696,7 @@ export class Game {
       const pose = customerPose({ phase: c.phase as CustomerPhase, phaseAt: c.phaseAt, spot: c.spot, seed: c.seed, angry: c.angry }, custTick);
       const order = c.order ? state.orders.get(c.order) : undefined;
       const showTicket = order && (c.phase === "waiting" || c.phase === "collecting") ? order.number : null;
-      view.update(pose, showTicket, dt);
+      view.update(pose, showTicket, dt, c.phase === "ordering");
       nearDoor = Math.min(nearDoor, Math.hypot(pose.x, pose.z - FRONT_DOOR.z));
     }
     const doorTarget = nearDoor < FRONT_DOOR.openDistance ? 1 : 0;
@@ -722,6 +731,7 @@ export class Game {
         source = fresh ? "buffer" : "late";
       }
       this.presentItem(id, view, source, dt);
+      if (it.kind === "cup") view.tickCup(now);
     }
     for (const [rootId, layers] of stacks) {
       const rootView = this.items.get(rootId);
@@ -806,6 +816,7 @@ export class Game {
       pendingInputs: this.local.pendingCount,
       fps: this.engine.getFps(),
     });
+    this.updateTutorial(now);
     this.updateHud(now);
   }
 
@@ -861,6 +872,7 @@ export class Game {
         customer: o.customer,
         label: RECIPES[o.recipe as RecipeId]?.label ?? o.recipe,
         mods: [...o.modifiers].map((mm) => MODIFIERS[mm as ModifierId]?.label ?? mm),
+        extras: [...(o.side ? ["Fries"] : []), ...(o.drink ? [drinkById(o.drink)?.label ?? o.drink] : [])],
         wait: state.shiftTime - o.createdAt,
         // Off by default: cooks are meant to learn the builds.
         hint: this.settings.showRecipeHints ? recipeHint(o.recipe as RecipeId) : undefined,
@@ -1051,6 +1063,12 @@ export class Game {
         return this.settings.simpleInteractions ? `${click}: open/close` : "Drag: pull drawer";
       case "switch":
         return `${click}/${touch ? "Use" : "E"}: ${st.phase === "open" ? "close up" : "open restaurant"}`;
+      case "computer":
+        return `${click}/${touch ? "Use" : "E"}: order supplies`;
+      case "register": {
+        const waiting = [...st.customers.values()].filter((c) => c.phase === "ordering").length;
+        return `${click}/${touch ? "Use" : "E"}: ${waiting > 0 ? `take order (${waiting} waiting)` : "register"}`;
+      }
       case "trash":
         return null;
       case "player":
@@ -1200,6 +1218,12 @@ export class Game {
       case "switch":
         this.toggleShift();
         return;
+      case "computer":
+        this.hooks.openSupplies();
+        return;
+      case "register":
+        this.hooks.openRegister();
+        return;
       default:
         return;
     }
@@ -1337,6 +1361,8 @@ export class Game {
       case "use":
       case "flick": {
         if (t?.pick.type === "switch" && a === "use") return this.toggleShift();
+        if (t?.pick.type === "computer" && a === "use" && !heldKind) return this.hooks.openSupplies();
+        if (t?.pick.type === "register" && a === "use" && !heldKind) return this.hooks.openRegister();
         if (heldKind && t?.pick.type === "player" && a === "use") {
           void this.run(MSG.offer, { to: t.pick.id }).then((r) => r.ok && this.ui.toast("Holding it out — your teammate can take it", "info", 1800));
           this.hold = INTERACTION.offerDistance;
@@ -1443,6 +1469,65 @@ export class Game {
       return null;
     }
     return this.instrumentation.drawCallsCounter.lastSecAverage || this.instrumentation.drawCallsCounter.current;
+  }
+
+  /** Starts the tutorial (before opening) or skips it. */
+  setTutorial(action: "start" | "skip"): Promise<ResultMessage> {
+    return this.run(MSG.tutorial, { action });
+  }
+
+  /** The tutorial card and the marker over what to do next, from the live state. */
+  private updateTutorial(now: number): void {
+    const st = this.session.state;
+    if (!st.tutorial) {
+      if (this.coachStep) {
+        this.coachStep = null;
+        this.ui.setCoach(null, () => undefined);
+      }
+      this.beacon?.setEnabled(false);
+      return;
+    }
+    if (now - this.coachAt > 200) {
+      this.coachAt = now;
+      const items = [...st.items.entries()].map(([id, it]) => {
+        const f = ITEMS[it.kind as ItemKind]?.food ? readFoodBytes(it) : null;
+        return { id, kind: it.kind, root: it.root, holder: it.holder, zone: it.zone, x: it.x, y: it.y, z: it.z, cookA: f?.cookA ?? 0, cookB: f?.cookB ?? 0, inner: f?.inner ?? 0, drink: it.drink, level: it.level / 255 };
+      });
+      this.coachStep = tutorialStep({
+        me: this.session.sessionId,
+        phase: st.phase,
+        drawer: st.drawer,
+        knobs: st.grill.map((g) => g.knob),
+        customers: [...st.customers.values()].map((c) => ({ phase: c.phase })),
+        openOrders: [...st.orders.values()].filter((o) => o.status === "open").map((o) => ({ recipe: o.recipe, drink: o.drink })),
+        items,
+      });
+      this.ui.setCoach({ index: this.coachStep.index, total: TUTORIAL_STEP_COUNT, text: this.coachStep.text }, () => void this.setTutorial("skip"));
+    }
+    const target = this.coachStep?.target ?? null;
+    if (!target) {
+      this.beacon?.setEnabled(false);
+      return;
+    }
+    if (!this.beacon) {
+      const cone = MeshBuilder.CreateCylinder("tutorial_beacon", { diameterTop: 0.16, diameterBottom: 0, height: 0.2, tessellation: 4 }, this.scene);
+      cone.material = this.restaurant.materials.solid("tutorial_beacon_mat", [1, 0.78, 0.2], 0.4, 0, [1, 0.7, 0.1]);
+      cone.isPickable = false;
+      this.beacon = cone;
+    }
+    this.beacon.setEnabled(true);
+    this.beacon.position.set(target[0], target[1] + 0.32 + Math.sin(now / 260) * 0.04, target[2]);
+    this.beacon.rotation.y = now / 700;
+  }
+
+  /** Rings up what the cashier heard for a customer; resolves with the server's answer. */
+  ringUp(customer: string, order: { recipe: string; modifiers: string[]; drink: string; side: string }): Promise<ResultMessage> {
+    return this.run(MSG.ring, { customer, ...order });
+  }
+
+  /** Orders supplies from the office computer; resolves with the server's answer. */
+  buySupply(stock: string, packs: number): Promise<ResultMessage> {
+    return this.run(MSG.buy, { stock, packs });
   }
 
   /** Test hook: aim the camera precisely. */

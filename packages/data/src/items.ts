@@ -21,6 +21,7 @@ export const ITEM_KINDS = [
   "mayo_bottle",
   "bbq_bottle",
   "cup",
+  "fries",
 ] as const;
 
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -200,6 +201,18 @@ export const ITEMS: Record<ItemKind, ItemDef> = {
     grip: "pinch",
     costCents: 6,
     accepts: FOOD_LAYERS,
+  },
+  fries: {
+    kind: "fries",
+    label: "Fries",
+    shape: { type: "cylinder", radius: 0.055, halfHeight: 0.04 },
+    layerHeight: 0.08,
+    mass: 0.15,
+    food: true,
+    tool: false,
+    grip: "pinch",
+    costCents: 40,
+    accepts: [],
   },
   cup: {
     kind: "cup",

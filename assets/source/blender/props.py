@@ -83,7 +83,7 @@ def fills(foods: dict, m) -> dict[str, list[bpy.types.Object]]:
     for d in LAYOUT["DISPENSERS"]:
         kind, did = d["kind"], d["id"]
         hx, hy, hz = d["half"]
-        if kind == "tray" or d.get("requiresDrawer") is not None:
+        if kind in ("tray", "cup", "fries") or d.get("requiresDrawer") is not None:
             continue
         w, dd = hx * 2 - 0.006, hz * 2 - 0.006
         # Island topping rail is shallow (the pans sit on the worktop); the prep rail is deep.

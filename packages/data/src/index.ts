@@ -5,3 +5,4 @@ export * from "./recipes.js";
 export * from "./economy.js";
 export * from "./customers.js";
 export * from "./drinks.js";
+export * from "./fryer.js";

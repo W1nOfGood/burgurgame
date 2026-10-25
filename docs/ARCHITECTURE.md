@@ -75,6 +75,36 @@ their rate of change.
 - Cooking values are quantised to bytes before replication, so patches are sent only when the
   visible state changes. Food appearance on clients is a function of those values only.
 
+## Drinks and fries
+
+A cup set on the drip tray under a fountain valve fills with that valve's drink in three seconds
+(`stepFountain`); one drink per cup. A portion of fries from the dry-storage case, set over an oil
+vat, cooks through in 40 s and burns a few seconds after (`stepFood`, `FRYER` in
+`packages/data/src/fryer.ts`). A ticket that came with a drink or fries is served only when a full
+cup of that drink and a good (cooked, unburnt) portion stand on the pickup shelf beside the tray:
+setting either down re-checks the tray. Both are handed over with the burger and add their price.
+`DRINKS_ENABLED` and `FRIES_ENABLED` switch the features (till, tickets, supply lines).
+
+## Taking orders at the register
+
+A walk-in customer who reaches the counter is in the `ordering` phase: their spoken order
+(`CustomerState.say`) is replicated, but no ticket exists. The cashier opens the register, rings up
+the burger, its changes, the drink and the side, and sends it (`ring`). The server compares it with
+what the customer actually wants (`compareOrders`, shared in `packages/simulation/src/pos.ts`):
+a match creates the ticket and moves the customer on to `waiting`; anything else is sent back with
+what is wrong, and the customer stays. In normal mode a customer nobody takes within
+`SHIFT.orderPatienceSeconds` leaves; at closing time anyone still at the counter is turned away.
+The wanted order never leaves the server.
+
+## Supplies and money
+
+The restaurant's balance moves only through the store: a sale credits it, and an order at the
+office computer (`buy`: a supply line and 1–10 packs) debits it. The room checks the player is at
+the monitor, then `Store.purchaseStock` pays and adds the packs in one transaction (keyed by
+session and command id, so a retry never charges twice); the kitchen then adds the same quantity
+to its live stock and takes the balance the store returned. Checkpoints write the kitchen's stock
+back. Running out of a line fails grabs with "Out of …" until someone orders more.
+
 ## Items and stacks
 
 Burgers are logical stacks, not towers of rigid bodies: a physical root (tray, spatula or a loose

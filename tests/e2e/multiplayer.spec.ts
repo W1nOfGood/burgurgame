@@ -222,3 +222,68 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
   expect(await held(tab)).toBe(patty);
   await expect.poll(() => held(desk)).toBe("");
 });
+
+
+test("the office computer orders supplies with the restaurant's money", async ({ browser }) => {
+  const { page } = await openKitchen(browser, "Avery");
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
+  // Stand at the desk looking at the monitor (the crosshair follows the mouse without pointer lock).
+  const [mx, my, mz, px, pz] = [4.95, 1.08, 4.62, 4.95, 3.7];
+  await aimAt(page, { x: px, z: pz }, { x: mx, y: my, z: mz });
+  const c = await center(page);
+  await page.mouse.move(c.x, c.y);
+  await renderedFrames(page, 2);
+  await page.keyboard.press("KeyE");
+  await expect(page.locator(".screen.supplies")).toBeVisible();
+  const before = await page.evaluate(() => ({ patty: window.__ahb.session.state.stock.get("patty") as number, balance: window.__ahb.session.state.balance as number }));
+  await page.click('.supply[data-key="patty"] button[data-packs="1"]');
+  await expect.poll(() => page.evaluate(() => window.__ahb.session.state.stock.get("patty") as number)).toBe(before.patty + 20);
+  expect(await page.evaluate(() => window.__ahb.session.state.balance as number)).toBe(before.balance - 1600);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".screen.supplies")).toBeHidden();
+});
+
+test("a customer says their order and the ticket prints only once the register rings it up right", async ({ browser }) => {
+  const { page } = await openKitchen(browser, "Avery");
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
+  // Open the restaurant, then stand behind the register until someone walks up.
+  await page.evaluate(() => window.__ahb.teleport(2.62, 1.05, Math.PI, 0.6));
+  await expect.poll(() => page.evaluate(() => window.__ahb.session.command("shift", { action: "open" }).then((r: { ok: boolean }) => r.ok))).toBe(true);
+  const [rx, ry, rz, px, pz] = [-3.5, 1.27, 0.08, -3.5, 0.9];
+  await aimAt(page, { x: px, z: pz }, { x: rx, y: ry, z: rz });
+  await page.waitForFunction(() => [...window.__ahb.session.state.customers.values()].some((c: any) => c.phase === "ordering"), null, { timeout: 120_000 });
+  expect(await page.evaluate(() => window.__ahb.session.state.orders.size)).toBe(0); // nothing printed yet
+  const c = await center(page);
+  await page.mouse.move(c.x, c.y);
+  await renderedFrames(page, 2);
+  await page.keyboard.press("KeyE");
+  await expect(page.locator(".screen.register")).toBeVisible();
+  const say = (await page.textContent(".pos-who .quote"))!;
+  const recipes = await page.$$eval("[data-recipe]", (els) => els.map((e) => [(e as HTMLElement).dataset.recipe!, e.textContent!.split(" · ")[0]!] as const));
+  const wanted = recipes.find(([, label]) => say.includes(label))!;
+  const wrong = recipes.find(([id]) => id !== wanted[0] && id !== "starter")!;
+  await page.click(`[data-recipe="${wrong[0]}"]`);
+  await page.click("#send");
+  await expect(page.locator(".pos-ticket .msg")).toContainText("not the burger I asked for");
+  expect(await page.evaluate(() => window.__ahb.session.state.orders.size)).toBe(0);
+  await page.click(`[data-recipe="${wanted[0]}"]`);
+  for (const mod of await page.$$eval("[data-mod]", (els) => els.map((e) => [(e as HTMLElement).dataset.mod!, e.textContent!.split(" +")[0]!.toLowerCase()] as const))) {
+    if (say.includes(mod[1])) await page.click(`[data-mod="${mod[0]}"]`);
+  }
+  for (const drink of await page.$$eval("[data-drink]", (els) => els.map((e) => [(e as HTMLElement).dataset.drink!, e.textContent!.split(" · ")[0]!] as const))) {
+    if (drink[0] && say.includes(drink[1])) await page.click(`[data-drink="${drink[0]}"]`);
+  }
+  await page.click("#send");
+  await expect(page.locator(".pos-ticket .msg")).toContainText("Sent to the kitchen");
+  await expect.poll(() => page.evaluate(() => [...window.__ahb.session.state.orders.values()].map((o: any) => o.recipe))).toEqual([wanted[0]]);
+});
+
+test("a new restaurant starts with the tutorial, and it can be skipped", async ({ browser }) => {
+  const { page } = await openKitchen(browser, "Avery");
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
+  await expect(page.locator(".coach")).toContainText("OPEN sign");
+  expect(await page.evaluate(() => window.__ahb.session.state.tutorial)).toBe(true);
+  await page.click(".coach .link");
+  await expect.poll(() => page.evaluate(() => window.__ahb.session.state.tutorial)).toBe(false);
+  await expect(page.locator(".coach")).toBeHidden();
+});

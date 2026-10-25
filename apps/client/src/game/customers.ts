@@ -148,7 +148,7 @@ export class CustomerView {
     return true;
   }
 
-  update(p: CustomerPose, ticket: number | null, dt: number): void {
+  update(p: CustomerPose, ticket: number | null, dt: number, ordering = false): void {
     this.root.position.set(p.x, 0, p.z);
     // Turn smoothly toward the path heading (routes are rounded, but spots end in a turn).
     if (Number.isNaN(this.yaw)) this.yaw = p.yaw;
@@ -195,7 +195,7 @@ export class CustomerView {
       this.standIn[0]!.rotation.x = swing * 0.3;
     }
 
-    const label = ticket === null ? "" : `#${ticket}`;
+    const label = ticket !== null ? `#${ticket}` : ordering ? "Order?" : "";
     this.tag.setEnabled(label !== "");
     if (label !== this.tagKey) {
       this.tagKey = label;
@@ -208,7 +208,7 @@ export class CustomerView {
         ctx.roundRect(6, 6, 116, 52, 8);
         ctx.fill();
         ctx.fillStyle = "#2c2621";
-        ctx.font = "bold 34px ui-monospace, monospace";
+        ctx.font = `bold ${label.length > 4 ? 26 : 34}px ui-monospace, monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(label, 64, 34);

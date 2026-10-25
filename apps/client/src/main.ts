@@ -1,3 +1,4 @@
+import { customerName } from "@ahb/data";
 import { initPhysics, type Rapier } from "@ahb/simulation";
 import { PROTOCOL_VERSION } from "@ahb/protocol";
 import { AudioEngine } from "./game/audio.js";
@@ -88,6 +89,8 @@ async function enter(s: Session, R: Rapier): Promise<void> {
     openMenu: openMenu,
     openPing: openPing,
     openRecipes: () => openRecipes(false),
+    openSupplies: openSupplies,
+    openRegister: openRegister,
     leave: (reason, code) => onLeft(reason, code),
   });
   if (debug) {
@@ -206,6 +209,11 @@ function openMenu(): void {
       },
       ping: openPing,
       recipes: () => openRecipes(true),
+      ...(st.tutorial
+        ? { tutorial: { label: "Skip tutorial", run: () => { void g.setTutorial("skip"); close(); } } }
+        : st.phase === "prep"
+          ? { tutorial: { label: "Play the tutorial", run: () => { void g.setTutorial("start"); close(); } } }
+          : {}),
     },
   );
 }
@@ -220,6 +228,44 @@ function openRecipes(fromMenu: boolean): void {
     g.setMenuOpen(false);
     if (platform() === "desktop") g.input.requestLock();
   });
+}
+
+function openRegister(): void {
+  const g = game;
+  const s = session;
+  if (!g || !s) return;
+  g.setMenuOpen(true);
+  ui.showRegister(
+    () => ({
+      tutorial: s.state.tutorial,
+      customers: [...s.state.customers.entries()]
+        .filter(([, c]) => c.phase === "ordering")
+        .sort((a, b) => a[1].phaseAt - b[1].phaseAt)
+        .map(([id, c]) => ({ id, name: customerName(c.seed), say: c.say })),
+    }),
+    (customer, order) => g.ringUp(customer, order),
+    () => {
+      ui.hideScreen();
+      g.setMenuOpen(false);
+      if (platform() === "desktop") g.input.requestLock();
+    },
+  );
+}
+
+function openSupplies(): void {
+  const g = game;
+  const s = session;
+  if (!g || !s) return;
+  g.setMenuOpen(true);
+  ui.showSupplies(
+    () => ({ balance: s.state.balance, stock: (key) => s.state.stock.get(key) ?? 0 }),
+    (key, packs) => g.buySupply(key, packs),
+    () => {
+      ui.hideScreen();
+      g.setMenuOpen(false);
+      if (platform() === "desktop") g.input.requestLock();
+    },
+  );
 }
 
 function openPing(): void {

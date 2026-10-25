@@ -1,4 +1,4 @@
-import { COOKING, type ItemKind } from "@ahb/data";
+import { COOKING, FRYER, type ItemKind } from "@ahb/data";
 import { clamp, clamp01 } from "./vec.js";
 
 /**
@@ -106,6 +106,19 @@ export function stepFood(kind: ItemKind, s: FoodState, env: HeatEnv, dt: number)
     s.inner = Math.min(s.inner, 1.25);
     s.cookA = Math.min(s.cookA, 1.6);
     s.cookB = Math.min(s.cookB, 1.6);
+    return s;
+  }
+
+  if (kind === "fries") {
+    // Cooks through in FRYER.cookSeconds over the oil, then burns; out of the oil it just cools.
+    if (contact !== null) {
+      s.cookA = Math.min(1.6, s.cookA + dt / FRYER.cookSeconds);
+      s.inner = Math.min(1, s.cookA);
+      if (s.cookA > 1) s.burn = clamp01(s.burn + dt / FRYER.burnSeconds * FRYER.burntAbove * 1.6);
+      s.temp = approach(s.temp, contact * 0.6, COOKING.heatResponse, dt);
+    } else {
+      s.temp = approach(s.temp, COOKING.ambientTemp, COOKING.coolResponse, dt);
+    }
     return s;
   }
 

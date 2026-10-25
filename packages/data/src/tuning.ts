@@ -146,6 +146,8 @@ export const SHIFT = {
   maxOpenOrdersBase: 3,
   /** Normal shift length in seconds (spec: 15–25 min). */
   normalShiftSeconds: 18 * 60,
+  /** Seconds a customer stands at the counter waiting to be rung up before giving up (normal mode). */
+  orderPatienceSeconds: 90,
   /** Seconds an order may wait before patience penalties start. */
   patienceSeconds: 180,
   /** Shift seconds after which tier 2 / tier 3 recipes start appearing on tickets. */

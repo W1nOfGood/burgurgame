@@ -58,8 +58,9 @@ describe("authored art", () => {
 
   it("food: every gameplay item kind has an authored model, plus the sauce drizzle", () => {
     const nodes = names(gltf("food.gltf"));
-    // The cup's model ships with the drinks (DRINKS_ENABLED).
-    for (const kind of ITEM_KINDS) if (kind !== "cup" || DRINKS_ENABLED) expect(nodes.has(kind), `food model for ${kind}`).toBe(true);
+    // Fries are drawn by a procedural stand-in (cooked colour from the cooking state), so they
+    // have no model of their own yet.
+    for (const kind of ITEM_KINDS) if (kind !== "fries" && (kind !== "cup" || DRINKS_ENABLED)) expect(nodes.has(kind), `food model for ${kind}`).toBe(true);
     expect(nodes.has("sauce_drizzle")).toBe(true);
     for (const t of ["beef_seared", "beef_cook", "bun_toasted", "bacon_crisp", "mushroom_seared", "egg_white_set"]) {
       expect(existsSync(join(ART, "food", `${t}.webp`)), t).toBe(true);
@@ -70,8 +71,8 @@ describe("authored art", () => {
     const nodes = names(gltf("props.gltf"));
     for (const n of ["knob", "drawer", "tray_stack", "switch_plate", "switch_lever", "open_sign"]) expect(nodes.has(n), n).toBe(true);
     for (const d of DISPENSERS) {
-      // Trays and cups come from stacks modelled with the restaurant, not from pans.
-      if (d.requiresDrawer !== undefined || d.kind === "tray" || d.kind === "cup") continue;
+      // Trays, cups and the fries case come from things modelled with the restaurant, not from pans.
+      if (d.requiresDrawer !== undefined || d.kind === "tray" || d.kind === "cup" || d.kind === "fries") continue;
       expect(nodes.has(`bin_${d.id}`) || nodes.has(d.id), `pan for ${d.id}`).toBe(true);
     }
   });
