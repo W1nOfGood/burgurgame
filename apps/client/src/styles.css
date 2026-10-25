@@ -718,3 +718,56 @@ kbd {
   font-size: 11px;
   color: #4e463f;
 }
+
+.screen.supplies {
+  width: min(1000px, 100%);
+}
+
+.supply-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin: 12px 0 8px;
+}
+
+.supply {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.supply header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.supply .have {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.supply .have.low {
+  color: var(--warn);
+}
+
+.supply .buy-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.supply .buy-row .btn:disabled {
+  opacity: 0.4;
+}
+
+.screen .msg {
+  min-height: 1.4em;
+}
+
+.screen .msg.bad {
+  color: var(--danger);
+}

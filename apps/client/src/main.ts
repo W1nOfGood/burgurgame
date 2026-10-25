@@ -88,6 +88,7 @@ async function enter(s: Session, R: Rapier): Promise<void> {
     openMenu: openMenu,
     openPing: openPing,
     openRecipes: () => openRecipes(false),
+    openSupplies: openSupplies,
     leave: (reason, code) => onLeft(reason, code),
   });
   if (debug) {
@@ -220,6 +221,22 @@ function openRecipes(fromMenu: boolean): void {
     g.setMenuOpen(false);
     if (platform() === "desktop") g.input.requestLock();
   });
+}
+
+function openSupplies(): void {
+  const g = game;
+  const s = session;
+  if (!g || !s) return;
+  g.setMenuOpen(true);
+  ui.showSupplies(
+    () => ({ balance: s.state.balance, stock: (key) => s.state.stock.get(key) ?? 0 }),
+    (key, packs) => g.buySupply(key, packs),
+    () => {
+      ui.hideScreen();
+      g.setMenuOpen(false);
+      if (platform() === "desktop") g.input.requestLock();
+    },
+  );
 }
 
 function openPing(): void {

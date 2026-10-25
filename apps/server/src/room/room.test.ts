@@ -387,3 +387,60 @@ describe("room lifecycle", () => {
     expect(room.state.saveStatus).toBe("ok");
   });
 });
+
+describe("ordering supplies at the office computer", () => {
+  const desk = (p: TestPlayer) => at(p, 4.95, 3.9, Math.PI, 0.1);
+
+  it("charges the restaurant and delivers the pack", async () => {
+    const a = await createRoom(h, "Avery");
+    const k = kitchenOf(a);
+    desk(a);
+    const state = serverRoom(h, a).state;
+    const before = { balance: state.balance, patties: state.stock.get("patty")! };
+    const res = await send(a, "buy", { stock: "patty", packs: 2 });
+    expect(res.ok).toBe(true);
+    // 2 packs: 40 patties for $32.
+    expect(state.stock.get("patty")).toBe(before.patties + 40);
+    expect(state.balance).toBe(before.balance - 3200);
+    expect(k.stockRecord().patty).toBe(before.patties + 40);
+    const restaurant = await store.getRestaurant(serverRoom(h, a).restaurantId);
+    expect(restaurant!.balanceCents).toBe(before.balance - 3200);
+  });
+
+  it("needs you at the computer, and enough money", async () => {
+    const a = await createRoom(h, "Avery");
+    at(a, -3, 1.0, 0, 0.1);
+    const far = await send(a, "buy", { stock: "cheese", packs: 1 });
+    expect(far.ok).toBe(false);
+    expect(far.reason).toMatch(/office computer/i);
+    desk(a);
+    expect((await send(a, "buy", { stock: "bacon", packs: 10 })).ok).toBe(true); // $84 a pack
+    expect((await send(a, "buy", { stock: "bacon", packs: 10 })).ok).toBe(true);
+    const broke = await send(a, "buy", { stock: "bacon", packs: 10 });
+    expect(broke.ok).toBe(false);
+    expect(broke.reason).toMatch(/not enough money/i);
+  });
+
+  it("answers a repeated command once", async () => {
+    const a = await createRoom(h, "Avery");
+    desk(a);
+    const first = await sendWithCmd(a, 50, "buy", { stock: "lettuce", packs: 1 });
+    const stock = serverRoom(h, a).state.stock.get("lettuce");
+    const again = await sendWithCmd(a, 50, "buy", { stock: "lettuce", packs: 1 });
+    expect(first.ok && again.ok).toBe(true);
+    expect(serverRoom(h, a).state.stock.get("lettuce")).toBe(stock);
+  });
+
+  it("makes a dead-end stock-out recoverable", async () => {
+    const a = await createRoom(h, "Avery");
+    const k = kitchenOf(a);
+    serverRoom(h, a).state.stock.set("onion", 0);
+    at(a, -1.34, 4.0, 0, 0.6);
+    const out = await send(a, "grab", { dispenser: "bin_onion" });
+    expect(out.ok).toBe(false);
+    expect(out.reason).toMatch(/restock/i);
+    desk(a);
+    expect((await send(a, "buy", { stock: "onion", packs: 1 })).ok).toBe(true);
+    expect(k.stockRecord().onion).toBe(30);
+  });
+});

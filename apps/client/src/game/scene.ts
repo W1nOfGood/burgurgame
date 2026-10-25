@@ -53,6 +53,7 @@ export type PickInfo =
   | { type: "drawer" }
   | { type: "dispenser"; id: string; kind: ItemKind }
   | { type: "switch" }
+  | { type: "computer" }
   | { type: "trash" }
   | { type: "player"; id: string }
   | { type: "static" };
@@ -218,7 +219,15 @@ export class RestaurantView {
     // the prediction world; these only answer "what did the player aim at").
     const groups = new Map<string, { meshes: Mesh[]; pick: PickInfo | null }>();
     for (const box of BOXES) {
-      const pick: PickInfo | null = box.surface ? { type: "surface", kind: box.surface } : box.id === "trash" ? { type: "trash" } : box.collide ? { type: "static" } : null;
+      const pick: PickInfo | null = box.surface
+        ? { type: "surface", kind: box.surface }
+        : box.id === "trash"
+          ? { type: "trash" }
+          : box.id === "office_screen"
+            ? { type: "computer" }
+            : box.collide
+              ? { type: "static" }
+              : null;
       if (!pick) continue;
       const mesh = MeshBuilder.CreateBox(`proxy_${box.id}`, { width: box.half[0] * 2, height: box.half[1] * 2, depth: box.half[2] * 2 }, scene);
       mesh.position.set(box.center[0], box.center[1], box.center[2]);

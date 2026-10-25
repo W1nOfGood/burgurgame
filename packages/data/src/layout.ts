@@ -107,6 +107,8 @@ export const BOXES: readonly LayoutBox[] = [
   { id: "walk_in", center: [-5.4, 1.0, 4.5], half: [0.55, 1.0, 0.45], material: "fridge_white", collide: true },
   { id: "dry_storage", center: [3.6, 0.9, 4.75], half: [0.9, 0.9, 0.2], material: "dark_metal", collide: true },
   { id: "office_desk", center: [5.1, 0.38, 4.4], half: [0.8, 0.38, 0.5], material: "timber", collide: true, surface: "counter" },
+  // The monitor on the desk (pick target only: nothing collides with it).
+  { id: "office_screen", center: [4.95, 1.08, 4.62], half: [0.29, 0.19, 0.03], material: "dark_metal", collide: false },
 
   // Assembly island, sink, trash, drinks
   { id: "assembly_island", center: [-0.5, 0.46, 2.2], half: [1.7, 0.46, 0.4], material: "stainless", collide: true, surface: "counter" },
@@ -197,6 +199,9 @@ export const NO_PLACE_RECTS: readonly (Rect & { y: number })[] = [
 ];
 
 export const SHIFT_SWITCH: Vec3 = [2.62, 0.9, 0.37];
+
+/** The office monitor: aim here to order supplies. */
+export const OFFICE_COMPUTER: Vec3 = [4.95, 1.08, 4.62];
 
 export interface InitialItem {
   kind: ItemKind;

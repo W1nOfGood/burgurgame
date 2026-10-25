@@ -1,4 +1,8 @@
 import type { ItemKind } from "./items.js";
+import { DRINKS_ENABLED } from "./drinks.js";
+
+/** Fries ship with the fryer station. */
+export const FRIES_ENABLED = false;
 
 /** All money is integer cents. */
 export const STARTING_BALANCE_CENTS = 20_000;
@@ -18,7 +22,9 @@ export type StockKey =
   | "mushroom"
   | "egg"
   | "jalapeno"
-  | "sauce";
+  | "sauce"
+  | "cup"
+  | "fries";
 
 export const STOCK_KEYS: readonly StockKey[] = [
   "patty",
@@ -36,7 +42,36 @@ export const STOCK_KEYS: readonly StockKey[] = [
   "egg",
   "jalapeno",
   "sauce",
+  "cup",
+  "fries",
 ];
+
+/** Names for the supply catalog. */
+export const STOCK_LABEL: Record<StockKey, string> = {
+  patty: "Beef patties",
+  veggie_patty: "Veggie patties",
+  bun_bottom: "Bottom buns",
+  bun_top: "Top buns",
+  cheese: "Cheddar slices",
+  swiss: "Swiss slices",
+  lettuce: "Lettuce leaves",
+  tomato: "Tomato slices",
+  onion: "Onion rings",
+  pickle: "Pickle chips",
+  bacon: "Bacon strips",
+  mushroom: "Mushrooms",
+  egg: "Eggs",
+  jalapeno: "Jalapeños",
+  sauce: "Sauce refills",
+  cup: "Paper cups",
+  fries: "Frozen fries (portions)",
+};
+
+/** What the office computer sells: lines whose feature is switched off are left out. */
+export const CATALOG_KEYS: readonly StockKey[] = STOCK_KEYS.filter((k) => (k !== "cup" || DRINKS_ENABLED) && (k !== "fries" || FRIES_ENABLED));
+
+/** Packs a single order may buy. */
+export const MAX_PACKS_PER_ORDER = 10;
 
 export const STARTING_STOCK: Record<StockKey, number> = {
   patty: 40,
@@ -54,6 +89,8 @@ export const STARTING_STOCK: Record<StockKey, number> = {
   egg: 30,
   jalapeno: 60,
   sauce: 30,
+  cup: 60,
+  fries: 30,
 };
 
 /** Restock packs bought from the office catalog (Stage 4 UI). */
@@ -73,6 +110,8 @@ export const RESTOCK_PACKS: Record<StockKey, { quantity: number; priceCents: num
   egg: { quantity: 24, priceCents: 560 },
   jalapeno: { quantity: 40, priceCents: 300 },
   sauce: { quantity: 10, priceCents: 300 },
+  cup: { quantity: 50, priceCents: 1200 },
+  fries: { quantity: 24, priceCents: 900 },
 };
 
 export function stockKeyFor(kind: ItemKind): StockKey | null {

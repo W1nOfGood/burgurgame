@@ -1,5 +1,5 @@
-import { ITEMS, RECIPES, SAUCE_LABEL, formatCents, type ItemKind } from "@ahb/data";
-import { PING_PRESETS, PING_TEXT, type PingPreset, type ServedMessage, type SummaryMessage } from "@ahb/protocol";
+import { CATALOG_KEYS, ITEMS, MAX_PACKS_PER_ORDER, RECIPES, RESTOCK_PACKS, SAUCE_LABEL, STOCK_LABEL, formatCents, type ItemKind, type StockKey } from "@ahb/data";
+import { PING_PRESETS, PING_TEXT, type PingPreset, type ResultMessage, type ServedMessage, type SummaryMessage } from "@ahb/protocol";
 import { DEFAULT_BINDINGS, defaultSettings, type GraphicsPreset, type Settings } from "../settings.js";
 
 /**
@@ -75,7 +75,12 @@ export class Ui {
 
   // ------------------------------------------------------------------ screens
 
+  /** Stops whatever the visible screen keeps running (a live-updating catalog). */
+  private cleanup: (() => void) | null = null;
+
   private show(content: HTMLElement): HTMLElement {
+    this.cleanup?.();
+    this.cleanup = null;
     this.screens.replaceChildren(content);
     this.screen = content;
     this.screens.hidden = false;
@@ -85,6 +90,8 @@ export class Ui {
   }
 
   hideScreen(): void {
+    this.cleanup?.();
+    this.cleanup = null;
     this.screens.replaceChildren();
     this.screen = null;
     this.screens.hidden = true;
@@ -211,6 +218,66 @@ export class Ui {
     s.querySelector("#copy")!.addEventListener("click", cb.copyCode);
     s.querySelector("#export")?.addEventListener("click", cb.exportSave);
     this.show(s);
+  }
+
+  /**
+   * The office computer: the supply catalog. Stock and balance update live (others may be
+   * cooking and ordering at the same time); each order is paid for and delivered at once.
+   */
+  showSupplies(read: () => { balance: number; stock: (key: StockKey) => number }, buy: (key: StockKey, packs: number) => Promise<ResultMessage>, onClose: () => void): void {
+    const s = el("section", "screen supplies");
+    s.innerHTML = `
+      <h2>Supply orders</h2>
+      <p class="fine">Packs arrive straight away and come out of the restaurant's money. <b class="balance"></b></p>
+      <div class="supply-list">${CATALOG_KEYS.map((key) => {
+        const pack = RESTOCK_PACKS[key];
+        return `<article class="supply" data-key="${key}">
+          <header><b>${esc(STOCK_LABEL[key])}</b><span class="have"></span></header>
+          <p class="fine">${pack.quantity} per pack · ${formatCents(pack.priceCents)}</p>
+          <div class="buy-row"><button class="btn small" data-packs="1">Buy 1</button><button class="btn small" data-packs="5">Buy 5</button></div>
+        </article>`;
+      }).join("")}</div>
+      <p class="fine msg" role="status"></p>
+      <button class="btn primary" id="close">Done</button>`;
+    const msg = s.querySelector<HTMLElement>(".msg")!;
+    const paint = () => {
+      const { balance, stock } = read();
+      s.querySelector<HTMLElement>(".balance")!.textContent = `In the till: ${formatCents(balance)}`;
+      for (const card of s.querySelectorAll<HTMLElement>(".supply")) {
+        const key = card.dataset.key as StockKey;
+        const have = stock(key);
+        const low = have <= RESTOCK_PACKS[key].quantity / 3;
+        const label = card.querySelector<HTMLElement>(".have")!;
+        label.textContent = have <= 0 ? "Out of stock" : `${have} left`;
+        label.classList.toggle("low", low);
+        for (const b of card.querySelectorAll<HTMLButtonElement>("button")) b.disabled = RESTOCK_PACKS[key].priceCents * Number(b.dataset.packs) > balance;
+      }
+    };
+    s.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-packs]");
+      if (!b) return;
+      const key = b.closest<HTMLElement>(".supply")!.dataset.key as StockKey;
+      const packs = Math.min(MAX_PACKS_PER_ORDER, Number(b.dataset.packs));
+      b.disabled = true;
+      void buy(key, packs).then((r) => {
+        msg.textContent = r.ok ? `Ordered ${packs * RESTOCK_PACKS[key].quantity} ${STOCK_LABEL[key].toLowerCase()}.` : (r.reason ?? "Couldn't place that order");
+        msg.classList.toggle("bad", !r.ok);
+        paint();
+      });
+    });
+    // On the window: after a purchase the pressed button is disabled and focus is lost.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") onClose();
+    };
+    s.querySelector("#close")!.addEventListener("click", onClose);
+    this.show(s);
+    paint();
+    const timer = setInterval(paint, 400);
+    window.addEventListener("keydown", onKey);
+    this.cleanup = () => {
+      clearInterval(timer);
+      window.removeEventListener("keydown", onKey);
+    };
   }
 
   /** The recipe book: the full build of every burger, for learning and lookups. */

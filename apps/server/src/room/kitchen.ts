@@ -22,7 +22,11 @@ import {
   SODA_FOUNTAIN,
   SPAWN_POINTS,
   SPAWN_YAW,
+  OFFICE_COMPUTER,
+  RESTOCK_PACKS,
+  STARTING_STOCK,
   STOCK_KEYS,
+  STOCK_LABEL,
   customerName,
   drinkById,
   drinkOfCode,
@@ -277,7 +281,8 @@ export class Kitchen {
       state.grill.push(g);
       void zone;
     }
-    for (const key of STOCK_KEYS) state.stock.set(key, opts.stock[key] ?? 0);
+    // Stock lines added after a restaurant was created start at their opening amount.
+    for (const key of STOCK_KEYS) state.stock.set(key, opts.stock[key] ?? STARTING_STOCK[key]);
     for (const init of INITIAL_ITEMS) {
       const it = this.createItem(init.kind, { x: init.position[0], y: init.position[1], z: init.position[2] }, quatYaw(init.yaw ?? 0));
       this.ensureBody(it);
@@ -534,6 +539,28 @@ export class Kitchen {
 
   private eye(p: PlayerRt): V3 {
     return eyePosition(p.motor.state, p.crouch);
+  }
+
+  /** Can this player order `packs` of a supply right now, and what would it cost? */
+  checkBuy(sessionId: string, key: StockKey, packs: number): { ok: true; quantity: number; priceCents: number; label: string } | { ok: false; reason: string } {
+    const no = (reason: string) => ({ ok: false as const, reason });
+    const p = this.player(sessionId);
+    if (!p) return no("Not connected");
+    if (this.state.paused) return no("The room is paused");
+    const reach = this.canReach(p, { x: OFFICE_COMPUTER[0], y: OFFICE_COMPUTER[1], z: OFFICE_COMPUTER[2] }, 0.4);
+    if (!reach.ok) return no("Step up to the office computer to order");
+    const pack = RESTOCK_PACKS[key];
+    const quantity = pack.quantity * packs;
+    const priceCents = pack.priceCents * packs;
+    if (this.state.balance < priceCents) return no("Not enough money for that order");
+    if ((this.state.stock.get(key) ?? 0) + quantity > 65_000) return no("The storeroom can't hold any more of that");
+    return { ok: true, quantity, priceCents, label: STOCK_LABEL[key] };
+  }
+
+  /** The order was paid for: the supplies arrive and the balance is the store's. */
+  applyPurchase(key: StockKey, quantity: number, balanceAfterCents: number): void {
+    this.state.stock.set(key, (this.state.stock.get(key) ?? 0) + quantity);
+    this.state.balance = balanceAfterCents;
   }
 
   /** Runs the player's oldest queued movement sample. */

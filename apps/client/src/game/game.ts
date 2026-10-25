@@ -71,6 +71,7 @@ export interface GameHooks {
   openMenu(): void;
   openPing(): void;
   openRecipes(): void;
+  openSupplies(): void;
   leave(reason: string, code: number): void;
 }
 
@@ -1051,6 +1052,8 @@ export class Game {
         return this.settings.simpleInteractions ? `${click}: open/close` : "Drag: pull drawer";
       case "switch":
         return `${click}/${touch ? "Use" : "E"}: ${st.phase === "open" ? "close up" : "open restaurant"}`;
+      case "computer":
+        return `${click}/${touch ? "Use" : "E"}: order supplies`;
       case "trash":
         return null;
       case "player":
@@ -1200,6 +1203,9 @@ export class Game {
       case "switch":
         this.toggleShift();
         return;
+      case "computer":
+        this.hooks.openSupplies();
+        return;
       default:
         return;
     }
@@ -1337,6 +1343,7 @@ export class Game {
       case "use":
       case "flick": {
         if (t?.pick.type === "switch" && a === "use") return this.toggleShift();
+        if (t?.pick.type === "computer" && a === "use" && !heldKind) return this.hooks.openSupplies();
         if (heldKind && t?.pick.type === "player" && a === "use") {
           void this.run(MSG.offer, { to: t.pick.id }).then((r) => r.ok && this.ui.toast("Holding it out — your teammate can take it", "info", 1800));
           this.hold = INTERACTION.offerDistance;
@@ -1443,6 +1450,11 @@ export class Game {
       return null;
     }
     return this.instrumentation.drawCallsCounter.lastSecAverage || this.instrumentation.drawCallsCounter.current;
+  }
+
+  /** Orders supplies from the office computer; resolves with the server's answer. */
+  buySupply(stock: string, packs: number): Promise<ResultMessage> {
+    return this.run(MSG.buy, { stock, packs });
   }
 
   /** Test hook: aim the camera precisely. */

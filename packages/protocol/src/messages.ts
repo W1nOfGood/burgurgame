@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { INTERACTION, NET } from "@ahb/data";
+import { INTERACTION, MAX_PACKS_PER_ORDER, NET, STOCK_KEYS, type StockKey } from "@ahb/data";
 
 /**
  * Client → server intents. TypeScript types do not validate untrusted network input, so every
@@ -23,6 +23,7 @@ export const MSG = {
   ping: "ping",
   away: "away",
   tutorial: "tutorial",
+  buy: "buy",
 } as const;
 
 export const SERVER_MSG = {
@@ -98,6 +99,12 @@ export const squeezeSchema = z.object({ target: id, intensity: finite(0, 1) });
 export const shiftSchema = z.object({ cmd, action: z.enum(["open", "close"]) });
 
 export const pauseSchema = z.object({ cmd, action: z.enum(["request", "resume", "cancel"]) });
+
+export const buySchema = z.object({
+  cmd,
+  stock: z.enum(STOCK_KEYS as unknown as [StockKey, ...StockKey[]]),
+  packs: z.number().int().min(1).max(MAX_PACKS_PER_ORDER),
+});
 
 export const tutorialSchema = z.object({ cmd, action: z.enum(["start", "skip"]) });
 

@@ -75,6 +75,15 @@ their rate of change.
 - Cooking values are quantised to bytes before replication, so patches are sent only when the
   visible state changes. Food appearance on clients is a function of those values only.
 
+## Supplies and money
+
+The restaurant's balance moves only through the store: a sale credits it, and an order at the
+office computer (`buy`: a supply line and 1–10 packs) debits it. The room checks the player is at
+the monitor, then `Store.purchaseStock` pays and adds the packs in one transaction (keyed by
+session and command id, so a retry never charges twice); the kitchen then adds the same quantity
+to its live stock and takes the balance the store returned. Checkpoints write the kitchen's stock
+back. Running out of a line fails grabs with "Out of …" until someone orders more.
+
 ## Items and stacks
 
 Burgers are logical stacks, not towers of rigid bodies: a physical root (tray, spatula or a loose

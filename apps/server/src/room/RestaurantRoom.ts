@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Room, ServerError, matchMaker, type AuthContext, type Client } from "@colyseus/core";
-import { NET, ROOM } from "@ahb/data";
+import { NET, ROOM, type StockKey } from "@ahb/data";
 import { createPhysicsWorld, type PhysicsWorld, type Rapier } from "@ahb/simulation";
 import {
   MSG,
@@ -20,6 +20,7 @@ import {
   placeSchema,
   shiftSchema,
   tutorialSchema,
+  buySchema,
   spatulaSchema,
   squeezeSchema,
   type JoinOptions,
@@ -434,6 +435,53 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     client.send(SERVER_MSG.result, msg);
   }
 
+  /** Orders supplies at the office computer: paid through the store, delivered on commit. */
+  private async buy(client: Client, cmd: number, key: StockKey, packs: number): Promise<void> {
+    const session = this.sessions.get(client.sessionId);
+    const kitchen = this.kitchen;
+    if (!session || !kitchen) return;
+    const prior = session.results.get(cmd);
+    if (prior) {
+      client.send(SERVER_MSG.result, prior);
+      return;
+    }
+    const reply = (res: IntentResult): void => {
+      const msg: ResultMessage = res.ok ? { cmd, ok: true } : { cmd, ok: false, reason: res.reason };
+      session.results.set(cmd, msg);
+      if (session.results.size > RESULT_CACHE) session.results.delete(session.results.keys().next().value!);
+      client.send(SERVER_MSG.result, msg);
+    };
+    if (!this.allowIntent(client)) return reply({ ok: false, reason: "Slow down" });
+    const check = kitchen.checkBuy(client.sessionId, key, packs);
+    if (!check.ok) return reply(check);
+    if (!this.lease) return reply({ ok: false, reason: "Saving is unavailable — try again in a moment" });
+    try {
+      const res = await this.deps.store.purchaseStock({
+        lease: this.lease,
+        // The session id changes on every connection, so a reloaded page can't collide with an old order.
+        purchaseKey: `${client.sessionId}:${cmd}`,
+        stockKey: key,
+        quantity: check.quantity,
+        priceCents: check.priceCents,
+      });
+      if (this.disposed) return;
+      if (!res.ok) return reply({ ok: false, reason: res.reason ?? "Couldn't place that order" });
+      kitchen.applyPurchase(key, check.quantity, res.balanceCents);
+      this.state.saveStatus = "ok";
+      const who = this.state.players.get(client.sessionId)?.name ?? "Someone";
+      this.broadcast(SERVER_MSG.toast, { text: `${who} ordered ${check.quantity} ${check.label.toLowerCase()} ($${(check.priceCents / 100).toFixed(2)})`, tone: "success" } satisfies ToastMessage);
+      reply({ ok: true });
+    } catch (err) {
+      if (this.disposed) return;
+      if (err instanceof LeaseLostError) {
+        this.onLeaseLost();
+        return;
+      }
+      log.warn("purchase failed", { room: this.roomId, err: err as Error });
+      reply({ ok: false, reason: "Couldn't place that order — try again" });
+    }
+  }
+
   private on<S extends z.ZodType>(type: string, schema: S, handler: (client: Client, msg: z.infer<S>) => void): void {
     this.onMessage(type, (client: Client, raw: unknown) => {
       const parsed = schema.safeParse(raw);
@@ -460,6 +508,7 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
     this.on(MSG.offer, offerSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.offer(client.sessionId, msg.to)));
     this.on(MSG.spatula, spatulaSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.spatula(client.sessionId, msg.action, msg.item, msg.rev)));
     this.on(MSG.shift, shiftSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.shiftSwitch(client.sessionId, msg.action)));
+    this.on(MSG.buy, buySchema, (client, msg) => void this.buy(client, msg.cmd, msg.stock, msg.packs));
     this.on(MSG.tutorial, tutorialSchema, (client, msg) => this.command(client, msg.cmd, (k) => k.tutorial(client.sessionId, msg.action)));
     this.on(MSG.pause, pauseSchema, (client, msg) =>
       this.command(client, msg.cmd, (k) =>

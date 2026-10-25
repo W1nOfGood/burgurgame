@@ -222,3 +222,23 @@ test("desktop opens the chiller drawer, takes a patty and hands it to the tablet
   expect(await held(tab)).toBe(patty);
   await expect.poll(() => held(desk)).toBe("");
 });
+
+
+test("the office computer orders supplies with the restaurant's money", async ({ browser }) => {
+  const { page } = await openKitchen(browser, "Avery");
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
+  // Stand at the desk looking at the monitor (the crosshair follows the mouse without pointer lock).
+  const [mx, my, mz, px, pz] = [4.95, 1.08, 4.62, 4.95, 3.7];
+  await aimAt(page, { x: px, z: pz }, { x: mx, y: my, z: mz });
+  const c = await center(page);
+  await page.mouse.move(c.x, c.y);
+  await renderedFrames(page, 2);
+  await page.keyboard.press("KeyE");
+  await expect(page.locator(".screen.supplies")).toBeVisible();
+  const before = await page.evaluate(() => ({ patty: window.__ahb.session.state.stock.get("patty") as number, balance: window.__ahb.session.state.balance as number }));
+  await page.click('.supply[data-key="patty"] button[data-packs="1"]');
+  await expect.poll(() => page.evaluate(() => window.__ahb.session.state.stock.get("patty") as number)).toBe(before.patty + 20);
+  expect(await page.evaluate(() => window.__ahb.session.state.balance as number)).toBe(before.balance - 1600);
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".screen.supplies")).toBeHidden();
+});
