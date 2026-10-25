@@ -551,6 +551,15 @@ export class RestaurantView {
         this.standIns.push(merged);
         continue;
       }
+      if (d.kind === "fries") {
+        // The printed case of frozen fries: a slab flush with the shelf front to aim at.
+        const slab = MeshBuilder.CreateBox(`case_${d.id}`, { width: d.half[0] * 2, height: d.half[1] * 2, depth: d.half[2] * 2 }, this.scene);
+        slab.position.set(d.center[0], d.center[1], d.center[2]);
+        slab.material = m.solid("fries_case", [0.72, 0.52, 0.28], 0.8);
+        setPick(slab, { type: "dispenser", id: d.id, kind: "fries" });
+        this.standIns.push(slab);
+        continue;
+      }
       if (d.kind === "cup") {
         // A sleeve of paper cups beside the fountain.
         const sleeve = MeshBuilder.CreateCylinder(`cups_${d.id}`, { diameterTop: 0.092, diameterBottom: 0.07, height: d.half[1] * 2, tessellation: 16 }, this.scene);

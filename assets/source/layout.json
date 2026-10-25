@@ -382,6 +382,38 @@
    "surface": "counter"
   },
   {
+   "id": "fryer_vat_0",
+   "center": [
+    1.31,
+    0.9,
+    4.550000000000001
+   ],
+   "half": [
+    0.17000000000000004,
+    0.005,
+    0.22999999999999998
+   ],
+   "material": "stainless",
+   "collide": false,
+   "surface": "fryer"
+  },
+  {
+   "id": "fryer_vat_1",
+   "center": [
+    1.69,
+    0.9,
+    4.550000000000001
+   ],
+   "half": [
+    0.17000000000000004,
+    0.005,
+    0.22999999999999998
+   ],
+   "material": "stainless",
+   "collide": false,
+   "surface": "fryer"
+  },
+  {
    "id": "office_screen",
    "center": [
     4.95,
@@ -780,6 +812,20 @@
    ]
   },
   {
+   "id": "box_fries",
+   "kind": "fries",
+   "center": [
+    3.75,
+    0.31,
+    4.5
+   ],
+   "half": [
+    0.25,
+    0.15,
+    0.05
+   ]
+  },
+  {
    "id": "cups_west",
    "kind": "cup",
    "center": [
@@ -1161,6 +1207,22 @@
     "egg",
     "jalapeno"
    ]
+  },
+  "fries": {
+   "kind": "fries",
+   "label": "Fries",
+   "shape": {
+    "type": "cylinder",
+    "radius": 0.055,
+    "halfHeight": 0.04
+   },
+   "layerHeight": 0.08,
+   "mass": 0.15,
+   "food": true,
+   "tool": false,
+   "grip": "pinch",
+   "costCents": 40,
+   "accepts": []
   },
   "cup": {
    "kind": "cup",

@@ -75,6 +75,16 @@ their rate of change.
 - Cooking values are quantised to bytes before replication, so patches are sent only when the
   visible state changes. Food appearance on clients is a function of those values only.
 
+## Drinks and fries
+
+A cup set on the drip tray under a fountain valve fills with that valve's drink in three seconds
+(`stepFountain`); one drink per cup. A portion of fries from the dry-storage case, set over an oil
+vat, cooks through in 40 s and burns a few seconds after (`stepFood`, `FRYER` in
+`packages/data/src/fryer.ts`). A ticket that came with a drink or fries is served only when a full
+cup of that drink and a good (cooked, unburnt) portion stand on the pickup shelf beside the tray:
+setting either down re-checks the tray. Both are handed over with the burger and add their price.
+`DRINKS_ENABLED` and `FRIES_ENABLED` switch the features (till, tickets, supply lines).
+
 ## Taking orders at the register
 
 A walk-in customer who reaches the counter is in the `ordering` phase: their spoken order

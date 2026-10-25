@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { NET, SODA_FOUNTAIN, drinkCode, type StockKey } from "@ahb/data";
+import { FRYER, NET, SODA_FOUNTAIN, drinkCode, type StockKey } from "@ahb/data";
 import { createPhysicsWorld, initPhysics, restingHeight, type Rapier } from "@ahb/simulation";
 import { RestaurantState } from "@ahb/protocol";
 import { Kitchen, type KitchenHooks, type ServeRequest } from "./kitchen.js";
@@ -113,8 +113,71 @@ describe("fountain drinks", () => {
     cup.level = 1;
     p.checkPickup(cup, "p1");
     expect(serves).toHaveLength(1);
-    expect(serves[0]!.cupId).toBe(cup.id);
+    expect(serves[0]!.extraIds).toEqual([cup.id]);
     expect(serves[0]!.servedItemIds).toContain(cup.id);
     expect(serves[0]!.evaluation.priceCents).toBeGreaterThanOrEqual(500 + 200);
+  });
+});
+
+describe("fries", () => {
+  const vatSpot = (v: number) => ({ x: (FRYER.vats[v]!.minX + FRYER.vats[v]!.maxX) / 2, y: FRYER.deckY + restingHeight("fries"), z: 4.55 });
+
+  it("cooks in the oil, goes golden, then burns if left", () => {
+    const { k } = kitchen();
+    const p = k as unknown as Priv;
+    const f = p.createItem("fries", vatSpot(0)) as any;
+    p.ensureBody(f);
+    step(k, 20);
+    expect(f.food.cookA).toBeGreaterThan(0.4);
+    expect(f.food.cookA).toBeLessThan(0.6);
+    step(k, 20);
+    expect(f.food.cookA).toBeGreaterThanOrEqual(FRYER.servedAt);
+    expect(f.food.burn).toBe(0);
+    step(k, 25);
+    expect(f.food.burn).toBeGreaterThan(FRYER.burntAbove);
+  });
+
+  it("does not cook away from the oil", () => {
+    const { k } = kitchen();
+    const p = k as unknown as Priv;
+    const f = p.createItem("fries", { x: -1, y: 1.0 + restingHeight("fries"), z: 0 }) as any;
+    p.ensureBody(f);
+    step(k, 30);
+    expect(f.food.cookA).toBe(0);
+  });
+
+  it("serves a ticket's fries only when a good portion is on the shelf", () => {
+    const { k, state, toasts, serves } = kitchen();
+    const p = k as unknown as Priv;
+    const tray = p.createItem("tray", { x: -0.4, y: 1.0 + restingHeight("tray"), z: 0 });
+    p.ensureBody(tray);
+    const stackOn = (parent: any, kind: string) => {
+      const it = p.createItem(kind, parent.pos) as any;
+      parent.child = it.id;
+      it.parent = parent.id;
+      return it;
+    };
+    const bun = stackOn(tray, "bun_bottom");
+    const patty = stackOn(bun, "patty");
+    Object.assign(patty.food, { cookA: 0.9, cookB: 0.9, inner: 0.95 });
+    stackOn(patty, "bun_top");
+    (k as unknown as { addOrder(...a: unknown[]): unknown }).addOrder("starter", [], "Nok", "", "fries");
+    p.checkPickup(tray, "p1");
+    expect(serves).toHaveLength(0);
+    expect(toasts.some((t) => t.includes("fries"))).toBe(true);
+    const f = p.createItem("fries", { x: 0.1, y: 1.0 + restingHeight("fries"), z: 0.1 }) as any;
+    p.ensureBody(f);
+    f.food.cookA = 0.3; // raw
+    p.checkPickup(f, "p1");
+    expect(serves).toHaveLength(0);
+    f.food.cookA = 1;
+    f.food.burn = 0.5; // burnt
+    p.checkPickup(f, "p1");
+    expect(serves).toHaveLength(0);
+    f.food.burn = 0;
+    p.checkPickup(f, "p1");
+    expect(serves).toHaveLength(1);
+    expect(serves[0]!.extraIds).toEqual([f.id]);
+    expect(serves[0]!.evaluation.priceCents).toBeGreaterThanOrEqual(500 + 300);
   });
 });

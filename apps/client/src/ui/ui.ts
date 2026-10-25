@@ -1,4 +1,4 @@
-import { CATALOG_KEYS, DRINKS, ITEMS, MAX_PACKS_PER_ORDER, MODIFIERS, RECIPE_IDS, modifiersFor, type ModifierId, type RecipeId, RECIPES, RESTOCK_PACKS, SAUCE_LABEL, STOCK_LABEL, formatCents, type ItemKind, type StockKey } from "@ahb/data";
+import { CATALOG_KEYS, DRINKS, FRIES_PRICE_CENTS, ITEMS, MAX_PACKS_PER_ORDER, MODIFIERS, RECIPE_IDS, modifiersFor, type ModifierId, type RecipeId, RECIPES, RESTOCK_PACKS, SAUCE_LABEL, STOCK_LABEL, formatCents, type ItemKind, type StockKey } from "@ahb/data";
 import { PING_PRESETS, PING_TEXT, type PingPreset, type ResultMessage, type ServedMessage, type SummaryMessage } from "@ahb/protocol";
 import { TILL_HAS } from "@ahb/simulation";
 import { DEFAULT_BINDINGS, defaultSettings, type GraphicsPreset, type Settings } from "../settings.js";
@@ -273,7 +273,7 @@ export class Ui {
       let c = RECIPES[pick.recipe].priceCents;
       for (const m of pick.mods) c += MODIFIERS[m].priceDeltaCents;
       if (pick.drink) c += DRINKS.find((d) => d.id === pick.drink)?.priceCents ?? 0;
-      if (pick.side) c += 300;
+      if (pick.side) c += FRIES_PRICE_CENTS;
       return c;
     };
     const chip = (label: string, on: boolean, attrs: string) => `<button class="chip-btn ${on ? "on" : ""}" ${attrs}>${esc(label)}</button>`;
@@ -296,7 +296,7 @@ export class Ui {
         q(".pos-mods").innerHTML = mods.map((m) => chip(`${MODIFIERS[m].label}${MODIFIERS[m].priceDeltaCents ? ` +${formatCents(MODIFIERS[m].priceDeltaCents)}` : ""}`, pick.mods.has(m), `data-mod="${m}"`)).join("");
         const extras: string[] = [];
         if (TILL_HAS.drinks) extras.push(`<h3>Drink</h3><div>${chip("No drink", pick.drink === "", `data-drink=""`)}${DRINKS.map((d) => chip(`${d.label} · ${formatCents(d.priceCents)}`, pick.drink === d.id, `data-drink="${d.id}"`)).join("")}</div>`);
-        if (TILL_HAS.fries) extras.push(`<h3>Side</h3><div>${chip("No fries", pick.side === "", `data-side=""`)}${chip(`Fries · ${formatCents(300)}`, pick.side === "fries", `data-side="fries"`)}</div>`);
+        if (TILL_HAS.fries) extras.push(`<h3>Side</h3><div>${chip("No fries", pick.side === "", `data-side=""`)}${chip(`Fries · ${formatCents(FRIES_PRICE_CENTS)}`, pick.side === "fries", `data-side="fries"`)}</div>`);
         q(".pos-extras").innerHTML = extras.join("");
         const lines: string[] = [];
         if (pick.recipe) lines.push(esc(RECIPES[pick.recipe].label));

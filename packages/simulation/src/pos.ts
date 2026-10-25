@@ -1,4 +1,4 @@
-import { DRINKS_ENABLED, FRIES_ENABLED, MODIFIERS, RECIPES, drinkById, modifiersFor, type DrinkId, type ModifierId, type RecipeId } from "@ahb/data";
+import { DRINKS_ENABLED, FRIES_ENABLED, FRIES_PRICE_CENTS, MODIFIERS, RECIPES, drinkById, modifiersFor, type DrinkId, type ModifierId, type RecipeId } from "@ahb/data";
 
 /**
  * Taking an order at the register. A customer wants one burger (with changes), maybe a drink and
@@ -28,7 +28,7 @@ export function totalCents(w: WantedOrder): number {
   let c = RECIPES[w.recipe].priceCents;
   for (const m of w.modifiers) c += MODIFIERS[m].priceDeltaCents;
   if (w.drink) c += drinkById(w.drink)?.priceCents ?? 0;
-  if (w.side) c += 300;
+  if (w.side) c += FRIES_PRICE_CENTS;
   return c;
 }
 

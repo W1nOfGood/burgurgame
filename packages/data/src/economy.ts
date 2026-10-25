@@ -1,8 +1,6 @@
 import type { ItemKind } from "./items.js";
 import { DRINKS_ENABLED } from "./drinks.js";
-
-/** Fries ship with the fryer station. */
-export const FRIES_ENABLED = false;
+import { FRIES_ENABLED } from "./fryer.js";
 
 /** All money is integer cents. */
 export const STARTING_BALANCE_CENTS = 20_000;

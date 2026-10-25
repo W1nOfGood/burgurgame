@@ -491,6 +491,29 @@ export class ItemView {
         this.uniformTargets.push({ mesh: m, base: [0.86, 0.76, 0.62], cooked: [0.55, 0.38, 0.24], crisp: [0.35, 0.22, 0.12] });
         return m;
       }
+      case "fries": {
+        // A paper boat with a fan of sticks, a little different each time.
+        const sticks: Mesh[] = [];
+        const rnd = (i: number) => hash(`${this.id}:${i}`);
+        for (let i = 0; i < 46; i++) {
+          const len = 0.07 + rnd(i) * 0.035;
+          const st = MeshBuilder.CreateBox(`${n}_s${i}`, { width: 0.0075, height: len, depth: 0.0075 }, s);
+          st.rotation.set((rnd(i + 100) - 0.5) * 0.5, rnd(i + 200) * Math.PI, (rnd(i + 300) - 0.5) * 0.5);
+          st.position.set((rnd(i + 400) - 0.5) * 0.085, 0.012 + len / 2 - 0.02, (rnd(i + 500) - 0.5) * 0.045);
+          st.bakeCurrentTransformIntoVertices();
+          sticks.push(st);
+        }
+        const fries = Mesh.MergeMeshes(sticks, true, true)!;
+        fries.name = n;
+        fries.material = lib.vertexColored("fries_mat", 0.55);
+        paintUniform(fries, [0.93, 0.88, 0.66]);
+        this.uniformTargets.push({ mesh: fries, base: [0.93, 0.88, 0.66], cooked: [0.93, 0.68, 0.22], crisp: [0.72, 0.42, 0.12] });
+        const boat = MeshBuilder.CreateBox(`${n}_boat`, { width: 0.1, height: 0.045, depth: 0.056 }, s);
+        boat.position.y = -0.0175;
+        boat.material = lib.solid("fries_boat", [0.72, 0.1, 0.1], 0.6);
+        boat.parent = fries;
+        return fries;
+      }
       case "egg": {
         const white = MeshBuilder.CreateCylinder(n, { diameter: 0.1, height: 0.006, tessellation: 32, updatable: true }, s);
         sculpt(white, 0.09, 0.001, seed);

@@ -23,6 +23,8 @@ import {
   SPAWN_POINTS,
   SPAWN_YAW,
   FRIES_ENABLED,
+  FRIES_PRICE_CENTS,
+  FRYER,
   OFFICE_COMPUTER,
   REGISTER,
   RESTOCK_PACKS,
@@ -32,6 +34,7 @@ import {
   customerName,
   drinkById,
   drinkOfCode,
+  fryerVatAt,
   isPatty,
   modifiersFor,
   stockKeyFor,
@@ -107,8 +110,8 @@ export interface ServeRequest {
   shiftId: string;
   evaluation: Evaluation;
   servedItemIds: string[];
-  /** The full cup handed over with the burger, when the ticket asked for a drink. */
-  cupId?: string;
+  /** The full cup and the portion of fries handed over with the burger, when the ticket asked for them. */
+  extraIds?: string[];
   by: string;
 }
 
@@ -195,7 +198,7 @@ interface CustomerRt {
   /** Shift time they started waiting to be rung up. */
   orderingSince: number;
   /** Their tray (and drink), taken when they reach for the food (tick). */
-  handover: { trayId: string; cupId?: string; tick: number } | null;
+  handover: { trayId: string; extraIds?: string[]; tick: number } | null;
 }
 
 export interface ItemSnapshot {
@@ -244,6 +247,7 @@ export interface KitchenSnapshot {
 }
 
 const PLAYER_COLORS = 6;
+
 
 export class Kitchen {
   readonly state: RestaurantState;
@@ -1154,8 +1158,8 @@ export class Kitchen {
    * to an open burger that happens to sit on the shelf does not serve it.
    */
   private checkPickup(root: ItemRt, by: string): void {
-    // A full cup set on the shelf completes the tray beside it.
-    if (root.kind === "cup") {
+    // A full cup or a portion of fries set on the shelf completes the tray beside it.
+    if (root.kind === "cup" || root.kind === "fries") {
       for (const t of this.items.values()) if (t.kind === "tray" && t.child && !t.holder && !t.locked) this.checkPickup(t, by);
       return;
     }
@@ -1164,8 +1168,8 @@ export class Kitchen {
     if (!inPickupZone({ x: r.pos.x, y: r.pos.y - restingHeight("tray"), z: r.pos.z })) return;
     const stack = this.stackFrom(r);
     // Full cups on the shelf are part of what is being served: setting one down re-checks.
-    const cups = this.cupsOnShelf().map((c) => `${c.id}:${c.drink}`);
-    const sig = `${stack.map((i) => `${i.id}:${i.s.rev}`).join(",")}|${cups.join(",")}`;
+    const extras = [...this.cupsOnShelf().map((c) => `${c.id}:${c.drink}`), ...this.friesOnShelf().map((f) => `${f.id}:${this.friesGood(f) ? 1 : 0}`)];
+    const sig = `${stack.map((i) => `${i.id}:${i.s.rev}`).join(",")}|${extras.join(",")}`;
     if (sig === r.serveSig) return;
     r.serveSig = sig;
     if (stack[stack.length - 1]!.kind !== "bun_top") {
@@ -1184,8 +1188,9 @@ export class Kitchen {
     const stack = this.stackFrom(tray).slice(1);
     const layers: ServedLayer[] = stack.map((it) => ({ kind: it.kind, food: it.food ?? createFoodState(it.kind) }));
     const cups = this.cupsOnShelf();
-    let best: { o: OrderRt; e: Evaluation; cup: ItemRt | null } | null = null;
-    let thirsty: { o: OrderRt; e: Evaluation } | null = null;
+    const fries = this.friesOnShelf();
+    let best: { o: OrderRt; e: Evaluation; cup: ItemRt | null; fries: ItemRt | null } | null = null;
+    let waiting: { o: OrderRt; e: Evaluation; why: string } | null = null;
     for (const o of open.sort((a, b) => a.s.createdAt - b.s.createdAt)) {
       const e = evaluateBurger(
         layers,
@@ -1193,20 +1198,20 @@ export class Kitchen {
         this.state.shiftTime - o.s.createdAt,
         SHIFT.patienceSeconds,
       );
-      // A ticket with a drink is only handed over with a full cup of it beside the tray.
+      // A ticket with a drink or fries is only handed over with a full cup of that drink and a
+      // good portion of fries beside the tray.
       const drink = o.s.drink ? drinkById(o.s.drink) : undefined;
       const cup = drink ? (cups.find((c) => drinkOfCode(c.drink)?.id === drink.id) ?? null) : null;
-      if (drink && !cup) {
-        if (!thirsty || e.score > thirsty.e.score) thirsty = { o, e };
+      const sides = o.s.side === "fries" ? (fries.find((f) => this.friesGood(f)) ?? null) : null;
+      const why = drink && !cup ? `comes with a ${drink.label}: fill a cup at the fountain and set it on the shelf` : o.s.side === "fries" && !sides ? (fries.length > 0 ? "needs good fries: those are raw or burnt" : "comes with fries: cook a portion in the fryer and set it on the shelf") : "";
+      if (why) {
+        if (!waiting || e.score > waiting.e.score) waiting = { o, e, why };
         continue;
       }
-      if (!best || e.score > best.e.score) best = { o, e, cup };
+      if (!best || e.score > best.e.score) best = { o, e, cup, fries: sides };
     }
-    if (!best || (thirsty && thirsty.e.score > best.e.score)) {
-      if (thirsty) {
-        const label = drinkById(thirsty.o.s.drink)?.label ?? "drink";
-        this.hooks.toast(by, `#${thirsty.o.s.number} comes with a ${label}: fill a cup at the fountain and set it on the shelf`, "warn");
-      }
+    if (!best || (waiting && waiting.e.score > best.e.score)) {
+      if (waiting) this.hooks.toast(by, `#${waiting.o.s.number} ${waiting.why}`, "warn");
       return;
     }
     const refuse = this.state.mode === "normal" ? !best.e.accepted : best.e.score === 0;
@@ -1218,12 +1223,19 @@ export class Kitchen {
     if (best.e.priceCents === 0) {
       best.e = { ...best.e, accepted: true, priceCents: Math.round(RECIPES[best.o.s.recipe as RecipeId].priceCents * 0.5) };
     }
-    const cup = best.cup;
-    if (cup) {
+    const handed: ItemRt[] = [];
+    if (best.cup) {
       best.e = { ...best.e, priceCents: best.e.priceCents + (drinkById(best.o.s.drink)?.priceCents ?? 0) };
-      cup.locked = true;
-      cup.s.holder = "__counter";
-      this.removeBody(cup);
+      handed.push(best.cup);
+    }
+    if (best.fries) {
+      best.e = { ...best.e, priceCents: best.e.priceCents + FRIES_PRICE_CENTS };
+      handed.push(best.fries);
+    }
+    for (const x of handed) {
+      x.locked = true;
+      x.s.holder = "__counter";
+      this.removeBody(x);
     }
     tray.locked = true;
     tray.s.holder = "__counter";
@@ -1236,8 +1248,8 @@ export class Kitchen {
       orderKey: `${this.shiftId}:${best.o.s.number}`,
       shiftId: this.shiftId,
       evaluation: best.e,
-      servedItemIds: [...stack.map((i) => i.id), ...(cup ? [cup.id] : [])],
-      ...(cup ? { cupId: cup.id } : {}),
+      servedItemIds: [...stack.map((i) => i.id), ...handed.map((x) => x.id)],
+      ...(handed.length ? { extraIds: handed.map((x) => x.id) } : {}),
       by,
     });
   }
@@ -1250,6 +1262,21 @@ export class Kitchen {
       if (inPickupZone({ x: it.pos.x, y: it.pos.y - restingHeight("cup"), z: it.pos.z })) out.push(it);
     }
     return out;
+  }
+
+  /** Portions of fries standing on the pickup shelf, free to hand over. */
+  private friesOnShelf(): ItemRt[] {
+    const out: ItemRt[] = [];
+    for (const it of this.items.values()) {
+      if (it.kind !== "fries" || it.holder || it.parent || it.locked) continue;
+      if (inPickupZone({ x: it.pos.x, y: it.pos.y - restingHeight("fries"), z: it.pos.z })) out.push(it);
+    }
+    return out;
+  }
+
+  /** Cooked through and not burnt. */
+  private friesGood(it: ItemRt): boolean {
+    return !!it.food && it.food.cookA >= FRYER.servedAt && it.food.burn <= FRYER.burntAbove;
   }
 
   /** Called after the sale has committed (or was found already committed). */
@@ -1265,9 +1292,9 @@ export class Kitchen {
       // They step up to the shelf and take it: the tray stays locked with the food until then.
       const now = this.state.tick;
       this.setCustomerPhase(customer, "collecting", now);
-      customer.handover = { trayId: req.trayId, ...(req.cupId ? { cupId: req.cupId } : {}), tick: now + collectTicks(customer.s.spot).handover };
+      customer.handover = { trayId: req.trayId, ...(req.extraIds ? { extraIds: req.extraIds } : {}), tick: now + collectTicks(customer.s.spot).handover };
     } else {
-      this.handOver(req.trayId, req.cupId);
+      this.handOver(req.trayId, req.extraIds);
     }
     this.state.revenue += req.evaluation.priceCents + req.evaluation.tipCents;
     this.state.balance = balanceAfterCents;
@@ -1309,9 +1336,11 @@ export class Kitchen {
   }
 
   /** The customer takes the food (and drink); the tray returns to the counter empty. */
-  private handOver(trayId: string, cupId?: string): void {
-    const cup = cupId ? this.items.get(cupId) : undefined;
-    if (cup) this.destroyStack(cup, false);
+  private handOver(trayId: string, extraIds: string[] = []): void {
+    for (const id of extraIds) {
+      const extra = this.items.get(id);
+      if (extra) this.destroyStack(extra, false);
+    }
     const tray = this.items.get(trayId);
     if (!tray) return;
     if (tray.child) this.destroyStack(this.items.get(tray.child)!, false);
@@ -1326,12 +1355,13 @@ export class Kitchen {
   abortServe(req: ServeRequest): void {
     const order = this.orders.get(req.orderId);
     if (order) order.reservedBy = null;
-    const cup = req.cupId ? this.items.get(req.cupId) : undefined;
-    if (cup) {
-      cup.locked = false;
-      cup.s.holder = "";
-      this.ensureBody(cup);
-      this.bump(cup);
+    for (const id of req.extraIds ?? []) {
+      const extra = this.items.get(id);
+      if (!extra) continue;
+      extra.locked = false;
+      extra.s.holder = "";
+      this.ensureBody(extra);
+      this.bump(extra);
     }
     const tray = this.items.get(req.trayId);
     if (tray) {
@@ -1430,7 +1460,7 @@ export class Kitchen {
       if (it.pos.y < 0.12) {
         for (const layer of this.stackFrom(it)) if (layer.food && !layer.food.dirty) layer.food.dirty = true;
       }
-      if ((it.kind === "tray" || it.kind === "cup") && it.body.isSleeping() && !it.holder && !it.locked && (it.kind === "cup" || it.child)) this.checkPickup(it, "");
+      if ((it.kind === "tray" || it.kind === "cup" || it.kind === "fries") && it.body.isSleeping() && !it.holder && !it.locked && (it.kind !== "tray" || it.child)) this.checkPickup(it, "");
     }
 
     // Stacks follow their roots.
@@ -1448,7 +1478,11 @@ export class Kitchen {
     for (const it of this.items.values()) {
       if (!it.food) continue;
       let contact: number | null = null;
-      if (!it.parent && !it.holder && !it.flip) {
+      if (it.kind === "fries") {
+        // Over an oil vat (the fryer is always hot); never on the grill.
+        it.zone = -1;
+        if (!it.parent && !it.holder && fryerVatAt(it.pos.x, it.pos.y - restingHeight("fries"), it.pos.z) >= 0) contact = FRYER.oilTemp;
+      } else if (!it.parent && !it.holder && !it.flip) {
         const zone = grillZoneAt(it.pos.x, it.pos.y - restingHeight(it.kind), it.pos.z);
         it.zone = zone;
         if (zone >= 0) contact = this.grillTemps[zone]!;
@@ -1692,7 +1726,7 @@ export class Kitchen {
     const now = this.state.tick;
     for (const c of [...this.customers.values()]) {
       if (c.handover && now >= c.handover.tick) {
-        this.handOver(c.handover.trayId, c.handover.cupId);
+        this.handOver(c.handover.trayId, c.handover.extraIds);
         c.handover = null;
       }
       if (now < c.endsAt) continue;
