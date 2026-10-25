@@ -270,7 +270,20 @@ test("a customer says their order and the ticket prints only once the register r
   for (const mod of await page.$$eval("[data-mod]", (els) => els.map((e) => [(e as HTMLElement).dataset.mod!, e.textContent!.split(" +")[0]!.toLowerCase()] as const))) {
     if (say.includes(mod[1])) await page.click(`[data-mod="${mod[0]}"]`);
   }
+  for (const drink of await page.$$eval("[data-drink]", (els) => els.map((e) => [(e as HTMLElement).dataset.drink!, e.textContent!.split(" · ")[0]!] as const))) {
+    if (drink[0] && say.includes(drink[1])) await page.click(`[data-drink="${drink[0]}"]`);
+  }
   await page.click("#send");
   await expect(page.locator(".pos-ticket .msg")).toContainText("Sent to the kitchen");
   await expect.poll(() => page.evaluate(() => [...window.__ahb.session.state.orders.values()].map((o: any) => o.recipe))).toEqual([wanted[0]]);
+});
+
+test("a new restaurant starts with the tutorial, and it can be skipped", async ({ browser }) => {
+  const { page } = await openKitchen(browser, "Avery");
+  await page.waitForFunction(() => window.__ahb?.ready, null, { timeout: 120_000 });
+  await expect(page.locator(".coach")).toContainText("OPEN sign");
+  expect(await page.evaluate(() => window.__ahb.session.state.tutorial)).toBe(true);
+  await page.click(".coach .link");
+  await expect.poll(() => page.evaluate(() => window.__ahb.session.state.tutorial)).toBe(false);
+  await expect(page.locator(".coach")).toBeHidden();
 });

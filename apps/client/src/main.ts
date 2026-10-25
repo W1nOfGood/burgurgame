@@ -209,6 +209,11 @@ function openMenu(): void {
       },
       ping: openPing,
       recipes: () => openRecipes(true),
+      ...(st.tutorial
+        ? { tutorial: { label: "Skip tutorial", run: () => { void g.setTutorial("skip"); close(); } } }
+        : st.phase === "prep"
+          ? { tutorial: { label: "Play the tutorial", run: () => { void g.setTutorial("start"); close(); } } }
+          : {}),
     },
   );
 }

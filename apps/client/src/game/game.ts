@@ -46,9 +46,12 @@ import {
   sizzleLevel,
   stackOffsets,
   surfaceAt,
+  TUTORIAL_STEP_COUNT,
+  tutorialStep,
   wrapAngle,
   type CustomerPhase,
   type Rapier,
+  type TutorialStep,
 } from "@ahb/simulation";
 import { MSG, PING_TEXT, readFoodBytes, type ItemState, type PingPreset, type ResultMessage } from "@ahb/protocol";
 import type { Session } from "../net/session.js";
@@ -177,6 +180,9 @@ export class Game {
     maxDelayMs: NET.maxInterpolationDelayMs,
   });
   private readonly stepper = new FixedStepper(NET.tickHz, NET.maxCatchUpSteps);
+  private coachStep: TutorialStep | null = null;
+  private coachAt = 0;
+  private beacon: Mesh | null = null;
   private readonly net = new NetStats((cb) => this.session.room.ping(cb));
   private yaw = 0;
   private pitch = 0.15;
@@ -810,6 +816,7 @@ export class Game {
       pendingInputs: this.local.pendingCount,
       fps: this.engine.getFps(),
     });
+    this.updateTutorial(now);
     this.updateHud(now);
   }
 
@@ -1462,6 +1469,55 @@ export class Game {
       return null;
     }
     return this.instrumentation.drawCallsCounter.lastSecAverage || this.instrumentation.drawCallsCounter.current;
+  }
+
+  /** Starts the tutorial (before opening) or skips it. */
+  setTutorial(action: "start" | "skip"): Promise<ResultMessage> {
+    return this.run(MSG.tutorial, { action });
+  }
+
+  /** The tutorial card and the marker over what to do next, from the live state. */
+  private updateTutorial(now: number): void {
+    const st = this.session.state;
+    if (!st.tutorial) {
+      if (this.coachStep) {
+        this.coachStep = null;
+        this.ui.setCoach(null, () => undefined);
+      }
+      this.beacon?.setEnabled(false);
+      return;
+    }
+    if (now - this.coachAt > 200) {
+      this.coachAt = now;
+      const items = [...st.items.entries()].map(([id, it]) => {
+        const f = ITEMS[it.kind as ItemKind]?.food ? readFoodBytes(it) : null;
+        return { id, kind: it.kind, root: it.root, holder: it.holder, zone: it.zone, x: it.x, y: it.y, z: it.z, cookA: f?.cookA ?? 0, cookB: f?.cookB ?? 0, inner: f?.inner ?? 0, drink: it.drink, level: it.level / 255 };
+      });
+      this.coachStep = tutorialStep({
+        me: this.session.sessionId,
+        phase: st.phase,
+        drawer: st.drawer,
+        knobs: st.grill.map((g) => g.knob),
+        customers: [...st.customers.values()].map((c) => ({ phase: c.phase })),
+        openOrders: [...st.orders.values()].filter((o) => o.status === "open").map((o) => ({ recipe: o.recipe, drink: o.drink })),
+        items,
+      });
+      this.ui.setCoach({ index: this.coachStep.index, total: TUTORIAL_STEP_COUNT, text: this.coachStep.text }, () => void this.setTutorial("skip"));
+    }
+    const target = this.coachStep?.target ?? null;
+    if (!target) {
+      this.beacon?.setEnabled(false);
+      return;
+    }
+    if (!this.beacon) {
+      const cone = MeshBuilder.CreateCylinder("tutorial_beacon", { diameterTop: 0.16, diameterBottom: 0, height: 0.2, tessellation: 4 }, this.scene);
+      cone.material = this.restaurant.materials.solid("tutorial_beacon_mat", [1, 0.78, 0.2], 0.4, 0, [1, 0.7, 0.1]);
+      cone.isPickable = false;
+      this.beacon = cone;
+    }
+    this.beacon.setEnabled(true);
+    this.beacon.position.set(target[0], target[1] + 0.32 + Math.sin(now / 260) * 0.04, target[2]);
+    this.beacon.rotation.y = now / 700;
   }
 
   /** Rings up what the cashier heard for a customer; resolves with the server's answer. */

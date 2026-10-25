@@ -34,6 +34,8 @@ export interface MenuCallbacks {
   copyCode(): void;
   ping(): void;
   recipes(): void;
+  /** Present only when the tutorial can be started (before opening) or skipped (while it runs). */
+  tutorial?: { label: string; run(): void };
 }
 
 export class Ui {
@@ -47,6 +49,8 @@ export class Ui {
   private readonly status: HTMLElement;
   private readonly banner: HTMLElement;
   private readonly tickets: HTMLElement;
+  private readonly coach: HTMLElement;
+  private lastCoachKey = "";
   private readonly prompt: HTMLElement;
   private screen: HTMLElement | null = null;
   private lastStatusKey = "";
@@ -64,12 +68,14 @@ export class Ui {
     this.banner = el("div", "pause-banner");
     this.banner.hidden = true;
     this.tickets = el("div", "ticket-overlay");
+    this.coach = el("div", "coach");
+    this.coach.hidden = true;
     this.prompt = el("button", "click-to-play", "Click to play");
     this.prompt.hidden = true;
     this.toasts = el("div", "toasts");
     this.toasts.setAttribute("role", "status");
     this.toasts.setAttribute("aria-live", "polite");
-    this.hud.append(this.crosshair, this.label, this.inspect, this.status, this.banner, this.tickets, this.prompt);
+    this.hud.append(this.crosshair, this.label, this.inspect, this.status, this.banner, this.tickets, this.coach, this.prompt);
     this.screens = el("div", "screens");
     root.append(this.hud, this.toasts, this.screens);
   }
@@ -204,6 +210,7 @@ export class Ui {
         <button id="pause" class="btn">${opts.paused ? "Resume countdown" : opts.solo ? "Pause the kitchen" : `Vote to pause ${esc(opts.votes)}`}</button>
         <button id="ping" class="btn">Ping teammates</button>
         <button id="recipes" class="btn">Recipe book</button>
+        ${cb.tutorial ? `<button id="tutorial" class="btn">${esc(cb.tutorial.label)}</button>` : ""}
         <button id="settings" class="btn">Settings</button>
         ${opts.isOwner ? `<button id="export" class="btn">Export save file</button>` : ""}
         <button id="leave" class="btn danger">Leave kitchen</button>
@@ -214,6 +221,7 @@ export class Ui {
     s.querySelector("#pause")!.addEventListener("click", cb.pause);
     s.querySelector("#ping")!.addEventListener("click", cb.ping);
     s.querySelector("#recipes")!.addEventListener("click", cb.recipes);
+    s.querySelector("#tutorial")?.addEventListener("click", () => cb.tutorial!.run());
     s.querySelector("#settings")!.addEventListener("click", cb.settings);
     s.querySelector("#leave")!.addEventListener("click", cb.leave);
     s.querySelector("#copy")!.addEventListener("click", cb.copyCode);
@@ -275,7 +283,7 @@ export class Ui {
       if (!customers.some((c) => c.id === pick.customer)) pick.customer = customers[0]?.id ?? "";
       const cur = customers.find((c) => c.id === pick.customer);
       q(".pos-who").innerHTML = cur
-        ? `<p class="who-line"><b>${esc(cur.name)}</b> <span class="quote">“${esc(cur.say)}”</span></p>${customers.length > 1 ? `<p class="fine">Also waiting: ${customers.filter((c) => c !== cur).map((c) => `<button class="link" data-cust="${c.id}">${esc(c.name)}</button>`).join(", ")}</p>` : ""}`
+        ? `${tut ? `<p class="coach-line">Tutorial: tap what they said — ${recipes(true).includes("starter") ? "<b>Starter Burger</b>" : ""}${TILL_HAS.drinks ? " and <b>Fizz Cola</b>" : ""} — then <b>Send to kitchen</b>.</p>` : ""}<p class="who-line"><b>${esc(cur.name)}</b> <span class="quote">“${esc(cur.say)}”</span></p>${customers.length > 1 ? `<p class="fine">Also waiting: ${customers.filter((c) => c !== cur).map((c) => `<button class="link" data-cust="${c.id}">${esc(c.name)}</button>`).join(", ")}</p>` : ""}`
         : `<p class="fine">Nobody is at the counter. Customers who walk up will say their order here.</p>`;
       const key = `${tutorial}|${pick.recipe}|${[...pick.mods].join()}|${pick.drink}|${pick.side}`;
       if (key !== menuKey) {
@@ -649,6 +657,21 @@ export class Ui {
           `<div class="ticket ${o.wait > 180 ? "late" : ""}"><b>#${o.number}${o.customer ? ` <span class="who">${esc(o.customer)}</span>` : ""}</b> ${esc(o.label)}${o.mods.map((m) => `<em>${esc(m)}</em>`).join("")}${(o.extras ?? []).map((m) => `<em class="extra">+ ${esc(m)}</em>`).join("")}${o.hint ? `<i>${esc(o.hint)}</i>` : ""}<small>${Math.floor(o.wait / 60)}:${String(Math.floor(o.wait % 60)).padStart(2, "0")}</small></div>`,
       )
       .join("");
+  }
+
+  /** The tutorial card: what to do next. `null` hides it. */
+  setCoach(step: { index: number; total: number; text: string } | null, onSkip: () => void): void {
+    if (!step) {
+      if (!this.coach.hidden) this.coach.hidden = true;
+      this.lastCoachKey = "";
+      return;
+    }
+    const key = `${step.index}|${step.text}`;
+    this.coach.hidden = false;
+    if (key === this.lastCoachKey) return;
+    this.lastCoachKey = key;
+    this.coach.innerHTML = `<span class="coach-step">Tutorial · ${step.index}/${step.total}</span><p>${esc(step.text)}</p><button class="link" type="button">Skip tutorial</button>`;
+    this.coach.querySelector("button")!.addEventListener("click", onSkip);
   }
 
   setClickToPlay(on: boolean, onClick?: () => void): void {

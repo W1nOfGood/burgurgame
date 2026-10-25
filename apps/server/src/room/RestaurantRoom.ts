@@ -201,9 +201,10 @@ export class RestaurantRoom extends Room<{ state: RestaurantState }> {
       kitchen.restore(snap, sales);
       // A resumed restaurant starts paused so nothing burns before the team is ready.
       if (snap.phase !== "prep") kitchen.pause("Restored from save — resume when ready");
+    } else {
+      // A brand-new restaurant: the first shift starts with the tutorial.
+      kitchen.startTutorial();
     }
-    // A brand-new restaurant will start with the tutorial once the client's coach ships
-    // (kitchen.startTutorial()); until then the tutorial stays off.
     this.kitchen = kitchen;
     this.lastSavedAt = Date.now();
     log.info("restaurant opened", { room: this.roomId, restaurant: restaurantId, restored: Boolean(checkpoint) });

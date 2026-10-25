@@ -215,4 +215,41 @@ describe("walk-in customers", () => {
     step(k, phaseTicks(timeline(c)) + 2);
     expect(state.phase).toBe("prep");
   });
+
+  it("run the tutorial: one customer wanting the Starter Burger and a cola, nobody else until it is served", () => {
+    const { k, state } = kitchen("relaxed", true);
+    state.phase = "prep";
+    k.startTutorial();
+    expect(state.tutorial).toBe(true);
+    (k as unknown as { openShift(): void }).openShift();
+    step(k, 40 * NET.tickHz);
+    const [id, c] = only(state);
+    expect(wanted(k, id)).toMatchObject({ recipe: "starter", drink: "cola" });
+    expect(c.say).toContain("Starter Burger");
+    // Nobody else walks in however long it takes.
+    step(k, 300 * NET.tickHz);
+    expect(state.customers.size).toBe(1);
+    cashier(k);
+    expect(ringUp(k, state, c).ok).toBe(true);
+    step(k, 120 * NET.tickHz);
+    expect(state.customers.size).toBe(1);
+    // Serving it ends the tutorial and the shift carries on.
+    const tray = [...state.items.entries()].find(([, it]) => it.kind === "tray")![0];
+    k.completeServe({ trayId: tray, orderId: c.order, orderNumber: 1, evaluation: { score: 90, priceCents: 700, tipCents: 0 } } as unknown as ServeRequest, 700);
+    expect(state.tutorial).toBe(false);
+    step(k, 60 * NET.tickHz);
+    expect([...state.customers.keys()].some((other) => other !== id)).toBe(true);
+  });
+
+  it("let the tutorial be skipped, and replayed before opening", () => {
+    const { k, state } = kitchen();
+    cashier(k);
+    state.phase = "prep";
+    expect(k.tutorial("cashier", "start")).toEqual({ ok: true });
+    expect(state.tutorial).toBe(true);
+    expect(k.tutorial("cashier", "skip")).toEqual({ ok: true });
+    expect(state.tutorial).toBe(false);
+    state.phase = "open";
+    expect(k.tutorial("cashier", "start").ok).toBe(false); // not once the shift has opened
+  });
 });
